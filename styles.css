@@ -93,3 +93,26 @@ td strong{font-weight:800}
 @media(max-width:700px){
   .stats-team .stats-table-wrap{border-radius:0}
 }
+
+
+/* Kompakt spillerstatistik */
+.stats-switch{display:flex;gap:6px;margin:-4px 0 14px;padding:4px;background:#e9eee9;border-radius:10px;width:max-content;max-width:100%;overflow:auto}
+.stats-switch-btn{border:0;background:transparent;color:#4b554d;border-radius:8px;padding:8px 12px;font-size:.78rem;font-weight:800;cursor:pointer;white-space:nowrap}
+.stats-switch-btn.active{background:#fff;color:var(--green-dark);box-shadow:0 1px 5px rgba(25,45,28,.10)}
+.stats-team-head{padding:10px 14px}
+.stats-team-head h3{font-size:1rem}
+.stats-team-head span{font-size:.7rem}
+.stats-team .stats-table-wrap{font-size:.82rem}
+.stats-team table{min-width:660px}
+.stats-team th,.stats-team td{padding:8px 10px}
+.stats-team th{font-size:.68rem}
+.stats-team td strong{font-weight:750}
+.stats-team .small{font-size:.74rem}
+.stats-team .count{font-size:.82rem}
+.total-count{font-size:.9rem}
+.rank{width:34px;color:#8a948b;font-weight:800;font-variant-numeric:tabular-nums}
+.stats-all table{min-width:760px}
+@media(max-width:700px){
+  .stats-switch{width:100%}
+  .stats-switch-btn{flex:1}
+}

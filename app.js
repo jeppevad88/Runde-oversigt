@@ -6,6 +6,7 @@ const teamMap = Object.fromEntries(DATA.teams.map(t => [t.id, t]));
 const playerMap = Object.fromEntries(DATA.teams.flatMap(t => t.players.map(p => [p.id, {...p, originalTeamId:t.id}])));
 let rosterState = {}; // key: round-team -> {slots: [], absences: []}
 let currentRound = 1;
+let statsMode = 'teams';
 let usingLocalFallback = false;
 
 const $ = (sel) => document.querySelector(sel);
@@ -119,7 +120,7 @@ function renderTabs(){
   el.innerHTML = DATA.rounds.map(r=>`<button class="tab ${currentRound===r.round?'active':''}" data-round="${r.round}">Runde ${r.round}</button>`).join("")
     + `<button class="tab stats ${currentRound==='stats'?'active':''}" data-stats="1">Spillerstatistik</button>`;
   el.querySelectorAll("[data-round]").forEach(b=>b.onclick=()=>{currentRound=Number(b.dataset.round);renderAll()});
-  el.querySelector("[data-stats]").onclick=()=>{currentRound='stats';renderAll()};
+  el.querySelector("[data-stats]").onclick=()=>{currentRound='stats';statsMode='teams';renderAll()};
 }
 
 function renderRound(){
@@ -243,10 +244,7 @@ function openPlayerModal(teamId,slot){
   };
 }
 
-function renderStats(){
-  $("#roundView").classList.add("hidden");
-  $("#statsView").classList.remove("hidden");
-
+function buildStats(){
   const grouped=DATA.teams.map(team=>{
     const players=team.players.map(p=>{
       let own=0,total=0,loans=0;
@@ -264,16 +262,27 @@ function renderStats(){
           }
         }
       }
-      const extra=total-own;
-      return {...p,own,total,extra,loans,extraTeams:[...extraTeams.entries()]};
+      return {...p,own,total,extra:total-own,loans,extraTeams:[...extraTeams.entries()]};
     });
     return {...team,players};
   });
+  return grouped;
+}
 
-  $("#statsView").innerHTML=`
-    <div class="round-head"><div><h2>Spillerstatistik</h2><p>Spillerne er grupperet efter deres oprindelige hold.</p></div></div>
-    <div class="notice">Her kan du se, hvor mange kampe hver spiller har spillet for sit eget hold, og hvor mange ekstra kampe spilleren har spillet for andre hold. En spiller kan tælle på flere hold i samme runde.</div>
-    <div class="stats-groups">
+function renderStats(){
+  $("#roundView").classList.add("hidden");
+  $("#statsView").classList.remove("hidden");
+
+  const grouped=buildStats();
+  const allPlayers=grouped.flatMap(team=>team.players.map(p=>({...p,originalTeamName:team.name})));
+  allPlayers.sort((a,b)=>b.total-a.total || b.extra-a.extra || a.name.localeCompare(b.name,'da'));
+
+  const modeTabs=`<div class="stats-switch" role="tablist" aria-label="Spillerstatistikvisning">
+    <button class="stats-switch-btn ${statsMode==='teams'?'active':''}" data-stats-mode="teams">Efter oprindeligt hold</button>
+    <button class="stats-switch-btn ${statsMode==='all'?'active':''}" data-stats-mode="all">Samlet liste · flest kampe</button>
+  </div>`;
+
+  const teamView=`<div class="stats-groups">
       ${grouped.map(team=>`
         <section class="stats-team">
           <div class="stats-team-head"><h3>${escapeHtml(team.name)}</h3><span>${team.players.length} spillere</span></div>
@@ -283,10 +292,32 @@ function renderStats(){
             <td class="count">${p.own}</td>
             <td class="count highlight">${p.extra}</td>
             <td class="small">${p.extraTeams.length?p.extraTeams.map(([id,n])=>`${escapeHtml(teamMap[id].name)} (${n})`).join(", "):"—"}</td>
-            <td class="count">${p.total}</td>
+            <td class="count total-count">${p.total}</td>
           </tr>`).join("")}</tbody></table></div>
         </section>`).join("")}
     </div>`;
+
+  const allView=`<section class="stats-team stats-all">
+      <div class="stats-team-head"><h3>Alle spillere</h3><span>Sorteret efter samlet antal kampe</span></div>
+      <div class="stats-table-wrap"><table><thead><tr><th>#</th><th>Spiller</th><th>Oprindeligt hold</th><th>Eget hold</th><th>Ekstra</th><th>Ekstra for</th><th>Samlet</th></tr></thead>
+      <tbody>${allPlayers.map((p,i)=>`<tr>
+        <td class="rank">${i+1}</td>
+        <td><strong>${escapeHtml(p.name)}</strong></td>
+        <td>${escapeHtml(p.originalTeamName)}</td>
+        <td class="count">${p.own}</td>
+        <td class="count highlight">${p.extra}</td>
+        <td class="small">${p.extraTeams.length?p.extraTeams.map(([id,n])=>`${escapeHtml(teamMap[id].name)} (${n})`).join(", "):"—"}</td>
+        <td class="count total-count">${p.total}</td>
+      </tr>`).join("")}</tbody></table></div>
+    </section>`;
+
+  $("#statsView").innerHTML=`
+    <div class="round-head"><div><h2>Spillerstatistik</h2><p>${statsMode==='teams'?'Spillerne er grupperet efter deres oprindelige hold.':'Samlet oversigt – flest samlede kampe øverst.'}</p></div></div>
+    ${modeTabs}
+    <div class="notice">Her kan du se, hvor mange kampe hver spiller har spillet for sit eget hold, og hvor mange ekstra kampe spilleren har spillet for andre hold. En spiller kan tælle på flere hold i samme runde.</div>
+    ${statsMode==='teams'?teamView:allView}`;
+
+  document.querySelectorAll('[data-stats-mode]').forEach(btn=>btn.onclick=()=>{statsMode=btn.dataset.statsMode;renderStats();});
 }
 
 function renderAll(){renderTabs(); currentRound==='stats'?renderStats():renderRound();}
