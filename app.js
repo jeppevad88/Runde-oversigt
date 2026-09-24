@@ -48,7 +48,11 @@ async function loadAll(){
 
 function normalizeRoster(players, teamId){
   const arr = Array.isArray(players) ? players : [];
-  const clean = arr.slice(0,8).map(x => x && x.playerId ? x : null);
+  // Villads Kaptain (p33) is originally on Hjallerup 6 only.
+  // If an older saved roster still has him as a fixed player on Hjallerup 5,
+  // remove that old entry. He can still be added to any other team as a loan.
+  const filtered = arr.filter(x => !(teamId === "hold5" && x && x.playerId === "p33" && x.kind !== "loan"));
+  const clean = filtered.slice(0,8).map(x => x && x.playerId ? x : null);
   while(clean.length < 8) clean.push(null);
   return clean;
 }
@@ -154,17 +158,20 @@ function attachTeamActions(){
 
 function availablePlayers(teamId){
   const usedElsewhere=new Map();
-  for(const m of DATA.rounds.find(r=>r.round===currentRound).matches){
+  const round=DATA.rounds.find(r=>r.round===currentRound);
+  for(const m of round.matches){
+    if(m.teamId===teamId) continue;
     const roster=getRoster(currentRound,m.teamId);
     for(const p of roster.filter(Boolean)){
-      if(p.originalTeamId!==teamId) usedElsewhere.set(p.playerId,m.teamId);
+      if(!usedElsewhere.has(p.playerId)) usedElsewhere.set(p.playerId,[]);
+      usedElsewhere.get(p.playerId).push(m.teamId);
     }
   }
   const currentIds=new Set(getRoster(currentRound,teamId).filter(Boolean).map(p=>p.playerId));
   return Object.values(playerMap)
     .filter(p=>!currentIds.has(p.id))
     .sort((a,b)=>a.name.localeCompare(b.name,'da'))
-    .map(p=>({...p,usedOn:usedElsewhere.get(p.id)}));
+    .map(p=>({...p,usedOn:usedElsewhere.get(p.id)||[]}));
 }
 
 function openPlayerModal(teamId,slot){
@@ -173,10 +180,10 @@ function openPlayerModal(teamId,slot){
   modal.className="modal-backdrop";
   modal.innerHTML=`<div class="modal">
     <h3>Tilføj spiller til ${teamMap[teamId].name}</h3>
-    <p>Vælg den spiller, der lånes til denne kamp. En spiller, der allerede står på et andet hold i samme runde, markeres.</p>
+    <p>Vælg den spiller, der skal med på dette hold. En spiller må gerne spille på flere hold i samme runde.</p>
     <select id="loanSelect">
       <option value="">Vælg spiller…</option>
-      ${options.map(p=>`<option value="${p.id}" ${p.usedOn?'disabled':''}>${escapeHtml(p.name)} · ${escapeHtml(teamMap[p.originalTeamId].name)}${p.usedOn?` · allerede på ${escapeHtml(teamMap[p.usedOn].name)}`:""}</option>`).join("")}
+      ${options.map(p=>`<option value="${p.id}">${escapeHtml(p.name)} · ${escapeHtml(teamMap[p.originalTeamId].name)}${p.usedOn.length?` · også på ${p.usedOn.map(id=>escapeHtml(teamMap[id].name)).join(", ")}`:""}</option>`).join("")}
     </select>
     <div class="modal-actions"><button class="btn cancel">Annuller</button><button class="btn save">Tilføj</button></div>
   </div>`;
@@ -190,7 +197,7 @@ function openPlayerModal(teamId,slot){
     const roster=getRoster(currentRound,teamId);
     const target=slot>=0 && !roster[slot] ? slot : roster.findIndex(x=>!x);
     if(target<0){toast("Holdet har allerede 8 spillere");return}
-    roster[target]={playerId:p.id,name:p.name,originalTeamId:p.originalTeamId,kind:"loan"};
+    roster[target]={playerId:p.id,name:p.name,originalTeamId:p.originalTeamId,kind:p.originalTeamId===teamId?"fast":"loan"};
     modal.remove();
     renderRound(); renderTabs();
     await saveRoster(currentRound,teamId);

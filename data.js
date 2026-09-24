@@ -161,10 +161,6 @@ window.APP_DATA = {
           "name": "Mathias P"
         },
         {
-          "id": "p33",
-          "name": "Villads Kaptain"
-        },
-        {
           "id": "p34",
           "name": "Lucas B"
         },
