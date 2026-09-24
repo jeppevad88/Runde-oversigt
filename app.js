@@ -4,7 +4,7 @@ const sb = createClient(window.SUPABASE_CONFIG.url, window.SUPABASE_CONFIG.anonK
 const DATA = window.APP_DATA;
 const teamMap = Object.fromEntries(DATA.teams.map(t => [t.id, t]));
 const playerMap = Object.fromEntries(DATA.teams.flatMap(t => t.players.map(p => [p.id, {...p, originalTeamId:t.id}])));
-let rosterState = {}; // key: round-team
+let rosterState = {}; // key: round-team -> {slots: [], absences: []}
 let currentRound = 1;
 let usingLocalFallback = false;
 
@@ -20,6 +20,44 @@ function baseRoster(teamId){
 
 function cloneRoster(arr){ return arr.map(x => x ? {...x} : null); }
 
+function normalizeStored(value, teamId){
+  // Backwards compatible with the old database format, where `players` was just an array.
+  let slots = Array.isArray(value) ? value : (value && Array.isArray(value.slots) ? value.slots : []);
+  let absences = Array.isArray(value && value.absences) ? value.absences : [];
+
+  // Villads Kaptain (p33) is originally on Hjallerup 6 only.
+  // Remove an old fixed entry from Hjallerup 5, but allow him to be added as a loan.
+  slots = slots.filter(x => !(teamId === "hold5" && x && x.playerId === "p33" && x.kind !== "loan"));
+  slots = slots.slice(0,8).map(x => x && x.playerId ? x : null);
+  while(slots.length < 8) slots.push(null);
+
+  // Clean old/duplicate absence entries and never show an absence for someone currently on the team.
+  const currentIds = new Set(slots.filter(Boolean).map(x => x.playerId));
+  const seen = new Set();
+  absences = absences.filter(x => x && x.playerId && !currentIds.has(x.playerId) && !seen.has(x.playerId) && playerMap[x.playerId]);
+  absences.forEach(x => seen.add(x.playerId));
+
+  return {slots, absences};
+}
+
+function getState(round, teamId){
+  const key=rosterKey(round,teamId);
+  if(!rosterState[key]) rosterState[key]={slots:baseRoster(teamId),absences:[]};
+  return rosterState[key];
+}
+
+function getRoster(round, teamId){ return getState(round,teamId).slots; }
+function getAbsences(round, teamId){ return getState(round,teamId).absences; }
+
+function setAbsence(round, teamId, player){
+  const absences=getAbsences(round,teamId);
+  if(!absences.some(x=>x.playerId===player.playerId)) absences.push({...player});
+}
+function removeAbsence(round, teamId, playerId){
+  const state=getState(round,teamId);
+  state.absences=state.absences.filter(x=>x.playerId!==playerId);
+}
+
 function setStatus(text, offline=false){
   $("#saveStatus").innerHTML = `<span class="status-dot ${offline?'offline':''}"></span>${text}`;
 }
@@ -27,11 +65,9 @@ function setStatus(text, offline=false){
 async function loadAll(){
   setStatus("Henter fælles data…");
   try{
-    const {data,error} = await sb.from("u11_rosters").select("round_no,team_id,players");
+    const {data,error}=await sb.from("u11_rosters").select("round_no,team_id,players");
     if(error) throw error;
-    for(const row of data || []){
-      rosterState[rosterKey(row.round_no,row.team_id)] = normalizeRoster(row.players,row.team_id);
-    }
+    for(const row of data || []) rosterState[rosterKey(row.round_no,row.team_id)] = normalizeStored(row.players,row.team_id);
     usingLocalFallback = false;
     setStatus("Fælles data gemmes automatisk");
   }catch(err){
@@ -39,33 +75,20 @@ async function loadAll(){
     usingLocalFallback = true;
     try{
       const saved = JSON.parse(localStorage.getItem("u11-rosters") || "{}");
-      rosterState = saved;
+      rosterState = Object.fromEntries(Object.entries(saved).map(([k,v])=>{
+        const [round,teamId]=k.split("-");
+        return [k,normalizeStored(v,teamId)];
+      }));
     }catch{}
     setStatus("Lokal tilstand – Supabase skal sættes op", true);
   }
-  renderRound();
-}
-
-function normalizeRoster(players, teamId){
-  const arr = Array.isArray(players) ? players : [];
-  // Villads Kaptain (p33) is originally on Hjallerup 6 only.
-  // If an older saved roster still has him as a fixed player on Hjallerup 5,
-  // remove that old entry. He can still be added to any other team as a loan.
-  const filtered = arr.filter(x => !(teamId === "hold5" && x && x.playerId === "p33" && x.kind !== "loan"));
-  const clean = filtered.slice(0,8).map(x => x && x.playerId ? x : null);
-  while(clean.length < 8) clean.push(null);
-  return clean;
-}
-
-function getRoster(round, teamId){
-  const key=rosterKey(round,teamId);
-  if(!rosterState[key]) rosterState[key]=baseRoster(teamId);
-  return rosterState[key];
+  renderAll();
 }
 
 async function saveRoster(round, teamId){
   const key=rosterKey(round,teamId);
-  const players=getRoster(round,teamId);
+  const state=getState(round,teamId);
+  const payload={slots:state.slots,absences:state.absences};
   if(usingLocalFallback){
     localStorage.setItem("u11-rosters",JSON.stringify(rosterState));
     setStatus("Gemt lokalt", true);
@@ -73,7 +96,7 @@ async function saveRoster(round, teamId){
   }
   setStatus("Gemmer…");
   const {error}=await sb.from("u11_rosters").upsert({
-    round_no:round, team_id:teamId, players, updated_at:new Date().toISOString()
+    round_no:round, team_id:teamId, players:payload, updated_at:new Date().toISOString()
   });
   if(error){
     console.error(error);
@@ -117,6 +140,7 @@ function renderRound(){
 
 function renderTeamCard(m){
   const roster=getRoster(currentRound,m.teamId);
+  const absences=getAbsences(currentRound,m.teamId);
   const filled=roster.filter(Boolean).length;
   const team=teamMap[m.teamId];
   const playersHtml=roster.map((p,i)=>{
@@ -133,6 +157,11 @@ function renderTeamCard(m){
       <div class="player-actions"><button class="icon-btn remove" title="Fjern spiller" data-remove="${m.teamId}" data-slot="${i}">×</button></div>
     </div>`;
   }).join("");
+
+  const absencesHtml=absences.length
+    ? absences.map(p=>`<div class="absence-row"><span class="absence-dot">!</span><strong>${escapeHtml(p.name)}</strong>${p.originalTeamId!==m.teamId?`<span class="absence-note">lånt spiller</span>`:""}</div>`).join("")
+    : `<div class="no-absence">Ingen registrerede afbud</div>`;
+
   return `<article class="team-card">
     <div class="team-head">
       <div class="team-title"><h3>${team.name}</h3><span class="badge">${filled}/8 spillere</span></div>
@@ -140,16 +169,24 @@ function renderTeamCard(m){
     </div>
     <div class="roster">${playersHtml}</div>
     <div class="team-footer"><span>${filled<8?`${8-filled} ledige pladser`:"Holdet er fyldt"}</span>${filled<8?`<button class="add-btn" data-add="${m.teamId}" data-slot="${roster.findIndex(x=>!x)}">+ Lån spiller</button>`:`<span class="full">✓ Klar</span>`}</div>
+    <div class="absence-box">
+      <div class="absence-head"><span>Afbud</span><span class="absence-count">${absences.length}</span></div>
+      <div class="absence-list">${absencesHtml}</div>
+    </div>
   </article>`;
 }
 
 function attachTeamActions(){
   document.querySelectorAll("[data-remove]").forEach(btn=>btn.onclick=async()=>{
     const teamId=btn.dataset.remove, slot=Number(btn.dataset.slot);
-    getRoster(currentRound,teamId)[slot]=null;
+    const roster=getRoster(currentRound,teamId);
+    const player=roster[slot];
+    if(!player) return;
+    roster[slot]=null;
+    setAbsence(currentRound,teamId,player);
     renderRound(); renderTabs();
     await saveRoster(currentRound,teamId);
-    toast("Spilleren er fjernet fra holdet");
+    toast(`${player.name} er registreret som afbud`);
   });
   document.querySelectorAll("[data-add]").forEach(btn=>btn.onclick=()=>{
     openPlayerModal(btn.dataset.add,Number(btn.dataset.slot));
@@ -198,6 +235,7 @@ function openPlayerModal(teamId,slot){
     const target=slot>=0 && !roster[slot] ? slot : roster.findIndex(x=>!x);
     if(target<0){toast("Holdet har allerede 8 spillere");return}
     roster[target]={playerId:p.id,name:p.name,originalTeamId:p.originalTeamId,kind:p.originalTeamId===teamId?"fast":"loan"};
+    removeAbsence(currentRound,teamId,p.id);
     modal.remove();
     renderRound(); renderTabs();
     await saveRoster(currentRound,teamId);
@@ -208,29 +246,47 @@ function openPlayerModal(teamId,slot){
 function renderStats(){
   $("#roundView").classList.add("hidden");
   $("#statsView").classList.remove("hidden");
-  const rows=Object.values(playerMap).map(p=>{
-    let appearances=0, other=0, loans=0;
-    const otherTeams=new Map();
-    for(const r of DATA.rounds){
-      const roundSeen=new Set();
-      for(const m of r.matches){
-        const roster=getRoster(r.round,m.teamId);
-        for(const x of roster.filter(Boolean)){
-          if(x.playerId!==p.id || roundSeen.has(m.teamId)) continue;
-          roundSeen.add(m.teamId); appearances++;
-          if(m.teamId!==p.originalTeamId){other++; otherTeams.set(m.teamId,(otherTeams.get(m.teamId)||0)+1); if(x.kind==="loan") loans++;}
+
+  const grouped=DATA.teams.map(team=>{
+    const players=team.players.map(p=>{
+      let own=0,total=0,loans=0;
+      const extraTeams=new Map();
+      for(const r of DATA.rounds){
+        for(const m of r.matches){
+          const roster=getRoster(r.round,m.teamId);
+          const entries=roster.filter(x=>x && x.playerId===p.id);
+          if(!entries.length) continue;
+          total += entries.length;
+          if(m.teamId===team.id) own += entries.length;
+          else {
+            extraTeams.set(m.teamId,(extraTeams.get(m.teamId)||0)+entries.length);
+            loans += entries.filter(x=>x.kind==="loan").length;
+          }
         }
       }
-    }
-    return {...p,appearances,other,loans,otherTeams:[...otherTeams.entries()].map(([id,n])=>`${teamMap[id].name} (${n})`).join(", ")};
-  }).sort((a,b)=>b.other-a.other || b.appearances-a.appearances || a.name.localeCompare(b.name,'da'));
+      const extra=total-own;
+      return {...p,own,total,extra,loans,extraTeams:[...extraTeams.entries()]};
+    });
+    return {...team,players};
+  });
 
   $("#statsView").innerHTML=`
-    <div class="round-head"><div><h2>Spillerstatistik</h2><p>Optællingen hentes direkte fra holdene i alle runder.</p></div></div>
-    <div class="notice">“Andre hold” viser, hvor mange gange spilleren står på et andet hold end sit oprindelige hold. “Lån” viser de gange, hvor spilleren er registreret som lånt spiller.</div>
-    <div class="stats-table-wrap"><table><thead><tr><th>Spiller</th><th>Oprindeligt hold</th><th>Antal kampe</th><th>Andre hold</th><th>Lån</th><th>Andre hold – hvilke?</th></tr></thead>
-    <tbody>${rows.map(p=>`<tr><td><strong>${escapeHtml(p.name)}</strong></td><td>${escapeHtml(teamMap[p.originalTeamId].name)}</td><td class="count">${p.appearances}</td><td class="count highlight">${p.other}</td><td class="count">${p.loans}</td><td class="small">${p.otherTeams||"—"}</td></tr>`).join("")}</tbody>
-    </table></div>`;
+    <div class="round-head"><div><h2>Spillerstatistik</h2><p>Spillerne er grupperet efter deres oprindelige hold.</p></div></div>
+    <div class="notice">Her kan du se, hvor mange kampe hver spiller har spillet for sit eget hold, og hvor mange ekstra kampe spilleren har spillet for andre hold. En spiller kan tælle på flere hold i samme runde.</div>
+    <div class="stats-groups">
+      ${grouped.map(team=>`
+        <section class="stats-team">
+          <div class="stats-team-head"><h3>${escapeHtml(team.name)}</h3><span>${team.players.length} spillere</span></div>
+          <div class="stats-table-wrap"><table><thead><tr><th>Spiller</th><th>Eget hold</th><th>Ekstra kampe</th><th>Ekstra for</th><th>Samlet</th></tr></thead>
+          <tbody>${team.players.map(p=>`<tr>
+            <td><strong>${escapeHtml(p.name)}</strong></td>
+            <td class="count">${p.own}</td>
+            <td class="count highlight">${p.extra}</td>
+            <td class="small">${p.extraTeams.length?p.extraTeams.map(([id,n])=>`${escapeHtml(teamMap[id].name)} (${n})`).join(", "):"—"}</td>
+            <td class="count">${p.total}</td>
+          </tr>`).join("")}</tbody></table></div>
+        </section>`).join("")}
+    </div>`;
 }
 
 function renderAll(){renderTabs(); currentRound==='stats'?renderStats():renderRound();}
@@ -247,8 +303,8 @@ setInterval(async()=>{
   try{
     const {data,error}=await sb.from("u11_rosters").select("round_no,team_id,players");
     if(error) throw error;
-    for(const row of data||[]) rosterState[rosterKey(row.round_no,row.team_id)]=normalizeRoster(row.players,row.team_id);
-    if(currentRound!=="stats") renderRound(); else renderStats();
+    for(const row of data||[]) rosterState[rosterKey(row.round_no,row.team_id)]=normalizeStored(row.players,row.team_id);
+    renderAll();
     setStatus("Fælles data gemmes automatisk");
   }catch(e){console.warn("Refresh failed",e)}
 },15000);

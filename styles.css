@@ -74,3 +74,22 @@ td strong{font-weight:800}
   .round-grid{grid-template-columns:1fr}
   main{padding-top:16px}
 }
+
+.absence-box{margin:0 12px 14px;border:1px solid #f0d6d6;background:#fff8f8;border-radius:10px;overflow:hidden}
+.absence-head{display:flex;justify-content:space-between;align-items:center;padding:9px 11px;background:#fff1f1;color:#9a2d2d;font-weight:800;font-size:.8rem;text-transform:uppercase;letter-spacing:.04em}
+.absence-count{min-width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;background:#f7dede;color:#9a2d2d;font-size:.72rem}
+.absence-list{padding:3px 10px 5px}
+.absence-row{display:flex;align-items:center;gap:8px;min-height:34px;border-bottom:1px solid #f4e5e5;font-size:.86rem}
+.absence-row:last-child{border-bottom:0}
+.absence-dot{width:18px;height:18px;border-radius:50%;background:#e9b8b8;color:#8f2525;display:inline-flex;align-items:center;justify-content:center;font-size:.68rem;font-weight:900}
+.absence-note{margin-left:auto;font-size:.7rem;color:#9a7777}
+.no-absence{padding:8px 2px;color:#a07c7c;font-size:.8rem;font-style:italic}
+.stats-groups{display:grid;gap:18px}
+.stats-team{background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
+.stats-team-head{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;background:linear-gradient(#fff,#f8fbf7);border-bottom:1px solid var(--line)}
+.stats-team-head h3{margin:0;font-size:1.15rem}
+.stats-team-head span{font-size:.75rem;color:var(--muted);font-weight:700}
+.stats-team .stats-table-wrap{border:0;border-radius:0;box-shadow:none}
+@media(max-width:700px){
+  .stats-team .stats-table-wrap{border-radius:0}
+}
