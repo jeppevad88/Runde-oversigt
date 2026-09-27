@@ -1,5 +1,13 @@
-const { createClient } = window.supabase;
-const sb = createClient(window.SUPABASE_CONFIG.url, window.SUPABASE_CONFIG.anonKey);
+let sb = null;
+let supabaseInitError = null;
+try {
+  if (!window.supabase?.createClient) throw new Error("Supabase-biblioteket blev ikke indlæst");
+  if (!window.SUPABASE_CONFIG?.url || !window.SUPABASE_CONFIG?.anonKey) throw new Error("Supabase-konfiguration mangler");
+  sb = window.supabase.createClient(window.SUPABASE_CONFIG.url, window.SUPABASE_CONFIG.anonKey);
+} catch (err) {
+  console.error(err);
+  supabaseInitError = err;
+}
 
 const DATA = window.APP_DATA;
 const teamMap = Object.fromEntries(DATA.teams.map(t => [t.id, t]));
@@ -63,16 +71,63 @@ function setStatus(text, offline=false){
   $("#saveStatus").innerHTML = `<span class="status-dot ${offline?'offline':''}"></span>${text}`;
 }
 
+function withTimeout(promise, ms=9000){
+  return Promise.race([
+    promise,
+    new Promise((_, reject)=>setTimeout(()=>reject(new Error("Forbindelsen til Supabase tog for lang tid")), ms))
+  ]);
+}
+
+function initializeBaseRosters(){
+  for(const r of DATA.rounds){
+    for(const m of r.matches){
+      const key=rosterKey(r.round,m.teamId);
+      if(!rosterState[key]) rosterState[key]={slots:baseRoster(m.teamId),absences:[]};
+    }
+  }
+}
+
+async function seedEmptyDatabase(){
+  initializeBaseRosters();
+  const rows=[];
+  for(const r of DATA.rounds){
+    for(const m of r.matches){
+      const state=getState(r.round,m.teamId);
+      rows.push({
+        round_no:r.round,
+        team_id:m.teamId,
+        players:{slots:state.slots,absences:state.absences},
+        updated_at:new Date().toISOString()
+      });
+    }
+  }
+  if(!rows.length) return;
+  const {error}=await withTimeout(sb.from("u11_rosters").upsert(rows,{onConflict:"round_no,team_id"}));
+  if(error) throw error;
+}
+
 async function loadAll(){
   setStatus("Henter fælles data…");
   try{
-    const {data,error}=await sb.from("u11_rosters").select("round_no,team_id,players");
+    if(supabaseInitError || !sb) throw supabaseInitError || new Error("Supabase er ikke initialiseret");
+    const {data,error}=await withTimeout(sb.from("u11_rosters").select("round_no,team_id,players"));
     if(error) throw error;
+    rosterState={};
     for(const row of data || []) rosterState[rosterKey(row.round_no,row.team_id)] = normalizeStored(row.players,row.team_id);
+
+    // Første gang er tabellen tom. Opret automatisk grunddata fra data.js.
+    if((data || []).length===0){
+      setStatus("Opretter grunddata…");
+      await seedEmptyDatabase();
+    } else {
+      // Sørg for at nye/manglende kampe stadig får deres oprindelige hold.
+      initializeBaseRosters();
+    }
+
     usingLocalFallback = false;
     setStatus("Fælles data gemmes automatisk");
   }catch(err){
-    console.error(err);
+    console.error("Supabase-fejl:",err);
     usingLocalFallback = true;
     try{
       const saved = JSON.parse(localStorage.getItem("u11-rosters") || "{}");
@@ -81,7 +136,10 @@ async function loadAll(){
         return [k,normalizeStored(v,teamId)];
       }));
     }catch{}
-    setStatus("Lokal tilstand – Supabase skal sættes op", true);
+    initializeBaseRosters();
+    const detail = err?.message ? ` · ${err.message}` : "";
+    setStatus(`⚠️ Supabase-forbindelse fejlede${detail}`, true);
+    toast("Kunne ikke hente fælles data fra Supabase");
   }
   renderAll();
 }
@@ -96,9 +154,9 @@ async function saveRoster(round, teamId){
     return;
   }
   setStatus("Gemmer…");
-  const {error}=await sb.from("u11_rosters").upsert({
+  const {error}=await withTimeout(sb.from("u11_rosters").upsert({
     round_no:round, team_id:teamId, players:payload, updated_at:new Date().toISOString()
-  });
+  }));
   if(error){
     console.error(error);
     usingLocalFallback=true;
@@ -332,7 +390,7 @@ loadAll();
 setInterval(async()=>{
   if(usingLocalFallback) return;
   try{
-    const {data,error}=await sb.from("u11_rosters").select("round_no,team_id,players");
+    const {data,error}=await withTimeout(sb.from("u11_rosters").select("round_no,team_id,players"));
     if(error) throw error;
     for(const row of data||[]) rosterState[rosterKey(row.round_no,row.team_id)]=normalizeStored(row.players,row.team_id);
     renderAll();
