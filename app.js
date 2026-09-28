@@ -87,22 +87,34 @@ function initializeBaseRosters(){
   }
 }
 
+function serializeState(){
+  const rounds = {};
+  for(const [key,value] of Object.entries(rosterState)){
+    rounds[key] = {
+      slots: value.slots,
+      absences: value.absences || []
+    };
+  }
+  return {rounds, updatedAt:new Date().toISOString()};
+}
+
+function applyStoredState(state){
+  rosterState={};
+  const rounds = state && typeof state === "object" && state.rounds && typeof state.rounds === "object" ? state.rounds : {};
+  for(const [key,value] of Object.entries(rounds)){
+    const parts=key.split("-");
+    const teamId=parts.slice(1).join("-");
+    rosterState[key]=normalizeStored(value,teamId);
+  }
+  initializeBaseRosters();
+}
+
 async function seedEmptyDatabase(){
   initializeBaseRosters();
-  const rows=[];
-  for(const r of DATA.rounds){
-    for(const m of r.matches){
-      const state=getState(r.round,m.teamId);
-      rows.push({
-        round_no:r.round,
-        team_id:m.teamId,
-        players:{slots:state.slots,absences:state.absences},
-        updated_at:new Date().toISOString()
-      });
-    }
-  }
-  if(!rows.length) return;
-  const {error}=await withTimeout(sb.from("u11_rosters").upsert(rows,{onConflict:"round_no,team_id"}));
+  const payload = serializeState();
+  const {error}=await withTimeout(
+    sb.from("u11_state").update({state:payload,updated_at:new Date().toISOString()}).eq("id","main")
+  );
   if(error) throw error;
 }
 
@@ -110,20 +122,19 @@ async function loadAll(){
   setStatus("Henter fælles data…");
   try{
     if(supabaseInitError || !sb) throw supabaseInitError || new Error("Supabase er ikke initialiseret");
-    const {data,error}=await withTimeout(sb.from("u11_rosters").select("round_no,team_id,players"));
+    const {data,error}=await withTimeout(sb.from("u11_state").select("id,state,updated_at").eq("id","main").maybeSingle());
     if(error) throw error;
-    rosterState={};
-    for(const row of data || []) rosterState[rosterKey(row.round_no,row.team_id)] = normalizeStored(row.players,row.team_id);
+    if(!data) throw new Error("Fandt ikke rækken main i u11_state");
 
-    // Første gang er tabellen tom. Opret automatisk grunddata fra data.js.
-    if((data || []).length===0){
+    const stored=data.state || {};
+    const hasRounds=stored && stored.rounds && Object.keys(stored.rounds).length>0;
+    if(hasRounds){
+      applyStoredState(stored);
+    }else{
       setStatus("Opretter grunddata…");
-      await seedEmptyDatabase();
-    } else {
-      // Sørg for at nye/manglende kampe stadig får deres oprindelige hold.
       initializeBaseRosters();
+      await seedEmptyDatabase();
     }
-
     usingLocalFallback = false;
     setStatus("Fælles data gemmes automatisk");
   }catch(err){
@@ -132,7 +143,8 @@ async function loadAll(){
     try{
       const saved = JSON.parse(localStorage.getItem("u11-rosters") || "{}");
       rosterState = Object.fromEntries(Object.entries(saved).map(([k,v])=>{
-        const [round,teamId]=k.split("-");
+        const parts=k.split("-");
+        const teamId=parts.slice(1).join("-");
         return [k,normalizeStored(v,teamId)];
       }));
     }catch{}
@@ -145,18 +157,17 @@ async function loadAll(){
 }
 
 async function saveRoster(round, teamId){
-  const key=rosterKey(round,teamId);
   const state=getState(round,teamId);
-  const payload={slots:state.slots,absences:state.absences};
   if(usingLocalFallback){
     localStorage.setItem("u11-rosters",JSON.stringify(rosterState));
     setStatus("Gemt lokalt", true);
     return;
   }
   setStatus("Gemmer…");
-  const {error}=await withTimeout(sb.from("u11_rosters").upsert({
-    round_no:round, team_id:teamId, players:payload, updated_at:new Date().toISOString()
-  }));
+  const payload=serializeState();
+  const {error}=await withTimeout(
+    sb.from("u11_state").update({state:payload,updated_at:new Date().toISOString()}).eq("id","main")
+  );
   if(error){
     console.error(error);
     usingLocalFallback=true;
@@ -390,10 +401,12 @@ loadAll();
 setInterval(async()=>{
   if(usingLocalFallback) return;
   try{
-    const {data,error}=await withTimeout(sb.from("u11_rosters").select("round_no,team_id,players"));
+    const {data,error}=await withTimeout(sb.from("u11_state").select("id,state,updated_at").eq("id","main").maybeSingle());
     if(error) throw error;
-    for(const row of data||[]) rosterState[rosterKey(row.round_no,row.team_id)]=normalizeStored(row.players,row.team_id);
-    renderAll();
-    setStatus("Fælles data gemmes automatisk");
+    if(data?.state){
+      applyStoredState(data.state);
+      renderAll();
+      setStatus("Fælles data gemmes automatisk");
+    }
   }catch(e){console.warn("Refresh failed",e)}
 },15000);

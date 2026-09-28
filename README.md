@@ -27,4 +27,4 @@ Den nuværende version gemmer holdets pladser og afbud samlet i JSON-feltet `pla
 
 
 ## v5
-Første opstart kan automatisk oprette grunddata i `u11_rosters`, hvis tabellen er tom. Forbindelsesfejl vises tydeligt i statusfeltet i stedet for at hænge på “Forbinder…”. Supabase skal ikke seedes manuelt.
+Første opstart kan automatisk oprette grunddata i `u11_state`, hvis tabellen er tom. Forbindelsesfejl vises tydeligt i statusfeltet i stedet for at hænge på “Forbinder…”. Supabase skal ikke seedes manuelt.
