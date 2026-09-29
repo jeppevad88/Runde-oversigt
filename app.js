@@ -445,30 +445,47 @@ function renderSchedule(){
   $("#statsView").classList.add("hidden");
   $("#scheduleView").classList.remove("hidden");
 
-  const selectedTeam = scheduleMode !== 'all' ? teamMap[scheduleMode] : null;
+  const selectedTeam = !['all','played'].includes(scheduleMode) ? teamMap[scheduleMode] : null;
+  const today = getCurrentDateLocal();
+  const allUpcoming = DATA.schedule.filter(m=>parseMatchDate(m.date).getTime() >= today.getTime());
+  const allPlayed = DATA.schedule.filter(m=>parseMatchDate(m.date).getTime() < today.getTime());
   const matches = scheduleMode === 'all'
-    ? DATA.schedule
-    : DATA.schedule.filter(m=>m.teamId===scheduleMode);
+    ? allUpcoming
+    : scheduleMode === 'played'
+      ? allPlayed
+      : DATA.schedule.filter(m=>m.teamId===scheduleMode);
 
   const subTabs=`<div class="schedule-switch" role="tablist" aria-label="Kampprogramvisning">
     <button class="schedule-switch-btn ${scheduleMode==='all'?'active':''}" data-schedule-mode="all">Samlet kampprogram</button>
+    <button class="schedule-switch-btn ${scheduleMode==='played'?'active':''}" data-schedule-mode="played">Spillede kampe</button>
     ${DATA.teams.map(team=>`<button class="schedule-switch-btn ${scheduleMode===team.id?'active':''}" data-schedule-mode="${team.id}">${escapeHtml(team.name)}</button>`).join('')}
   </div>`;
+
+  const pageTitle = scheduleMode === 'played' ? 'Spillede kampe' : selectedTeam ? selectedTeam.name : 'Samlet kampprogram';
+  const pageText = scheduleMode === 'played'
+    ? 'Kampe med kampdato før dags dato · kronologisk oversigt'
+    : selectedTeam
+      ? `Kun kampe for ${escapeHtml(selectedTeam.name)} · kronologisk oversigt`
+      : 'Kommende kampe for alle Hjallerup U11-hold · kronologisk oversigt';
+
+  const countLabel = matches.length===1?'kamp':'kampe';
+  const summaryLabel = scheduleMode === 'all' ? 'kommende' : scheduleMode === 'played' ? 'afviklede' : '';
 
   $("#scheduleView").innerHTML=`
     <div class="round-head">
       <div>
-        <h2>${selectedTeam ? escapeHtml(selectedTeam.name) : 'Kampprogram'}</h2>
-        <p>${selectedTeam ? `Kun kampe for ${escapeHtml(selectedTeam.name)} · kronologisk oversigt` : 'Alle Hjallerup U11-hold · kronologisk oversigt'}</p>
+        <h2>${escapeHtml(pageTitle)}</h2>
+        <p>${pageText}</p>
       </div>
     </div>
     ${subTabs}
     <div class="schedule-summary">
-      <span><strong>${matches.length}</strong> ${matches.length===1?'kamp':'kampe'}</span>
-      <span>${selectedTeam ? escapeHtml(selectedTeam.name) : `${DATA.teams.length} hold`}</span>
+      <span><strong>${matches.length}</strong> ${countLabel}</span>
+      <span>${summaryLabel ? escapeHtml(summaryLabel) : selectedTeam ? escapeHtml(selectedTeam.name) : `${DATA.teams.length} hold`}</span>
+      ${scheduleMode==='all' ? `<span>${allPlayed.length} ${allPlayed.length===1?'kamp':'kampe'} ligger under "Spillede kampe"</span>` : ''}
       <span>Efterår 2026</span>
     </div>
-    ${matches.length ? renderScheduleTable(matches) : '<div class="notice">Der er ingen kampe registreret for dette hold.</div>'}`;
+    ${matches.length ? renderScheduleTable(matches) : `<div class="notice">${scheduleMode==='played' ? 'Der er endnu ingen afviklede kampe.' : scheduleMode==='all' ? 'Der er ingen kommende kampe.' : 'Der er ingen kampe registreret for dette hold.'}</div>`}`;
 
   document.querySelectorAll('[data-schedule-mode]').forEach(btn=>btn.onclick=()=>{
     scheduleMode=btn.dataset.scheduleMode;
