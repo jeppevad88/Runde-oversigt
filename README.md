@@ -37,3 +37,7 @@ Versionen bruger Hjallerup IF-logoet som diskret vandmærke. Husk at uploade `Hj
 ## v9
 - Lånte spillere vises med grøn skrift og LÅN-markering.
 - Afbud har et kommentarfelt til årsag. Kommentaren gemmes sammen med afbuddet i Supabase via den eksisterende JSONB-state.
+
+
+### Nyt i denne version
+- Ny fane **Kampprogram** med alle 66 Hjallerup U11-kampe fra det uploadede samlede kampprogram, sorteret kronologisk efter dato og klokkeslæt.

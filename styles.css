@@ -145,3 +145,112 @@ td strong{font-weight:800}
 .stats-all th:nth-child(4),.stats-all td:nth-child(4),.stats-all th:nth-child(5),.stats-all td:nth-child(5){width:11%;white-space:nowrap}
 .stats-all th:nth-child(6),.stats-all td:nth-child(6){width:25%}
 .stats-all th:nth-child(7),.stats-all td:nth-child(7){width:11%;white-space:nowrap}
+
+
+/* Samlet kronologisk kampprogram */
+.schedule-summary{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin:-4px 0 14px;
+}
+.schedule-summary span{
+  background:rgba(255,255,255,.92);
+  border:1px solid var(--line);
+  border-radius:999px;
+  padding:7px 11px;
+  color:var(--muted);
+  font-size:.76rem;
+  font-weight:700;
+}
+.schedule-summary strong{color:var(--green-dark)}
+.schedule-groups{display:grid;gap:12px}
+.schedule-day{
+  background:rgba(255,255,255,.97);
+  border:1px solid var(--line);
+  border-radius:12px;
+  box-shadow:var(--shadow);
+  overflow:hidden;
+}
+.schedule-day-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  padding:9px 12px;
+  background:linear-gradient(#fff,#f7faf8);
+  border-bottom:1px solid var(--line);
+}
+.schedule-day-head h3{
+  margin:0;
+  font-size:.95rem;
+  text-transform:capitalize;
+}
+.schedule-day-head span{
+  display:block;
+  margin-top:2px;
+  color:var(--muted);
+  font-size:.72rem;
+  font-weight:700;
+}
+.schedule-day-head>strong{
+  color:var(--muted);
+  font-size:.72rem;
+  white-space:nowrap;
+}
+.schedule-table-wrap{overflow:auto}
+.schedule-table{
+  width:100%;
+  min-width:760px;
+  border-collapse:collapse;
+  table-layout:fixed;
+}
+.schedule-table th,.schedule-table td{
+  padding:7px 9px;
+  border-bottom:1px solid #edf0ed;
+  text-align:left;
+  vertical-align:middle;
+  font-size:.77rem;
+}
+.schedule-table th{
+  background:#f5f8f4;
+  color:#59625b;
+  font-size:.64rem;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+}
+.schedule-table th:nth-child(1),.schedule-table td:nth-child(1){width:9%;white-space:nowrap}
+.schedule-table th:nth-child(2),.schedule-table td:nth-child(2){width:18%}
+.schedule-table th:nth-child(3),.schedule-table td:nth-child(3){width:8%;white-space:nowrap;text-align:center}
+.schedule-table th:nth-child(4),.schedule-table td:nth-child(4){width:26%}
+.schedule-table th:nth-child(5),.schedule-table td:nth-child(5){width:31%}
+.schedule-table th:nth-child(6),.schedule-table td:nth-child(6){width:8%;white-space:nowrap;text-align:center}
+.schedule-time{font-variant-numeric:tabular-nums;font-weight:800}
+.schedule-venue{color:var(--muted)}
+.home-away{
+  width:22px;
+  height:22px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:7px;
+  font-size:.66rem;
+  font-weight:900;
+}
+.home-away.home{background:#e7f5eb;color:#1d7b40}
+.home-away.away{background:#eaf1fb;color:#2f5e9d}
+.round-pill{
+  display:inline-block;
+  min-width:26px;
+  padding:3px 5px;
+  border-radius:999px;
+  background:#eef2f7;
+  color:#536170;
+  font-size:.64rem;
+  font-weight:800;
+  text-align:center;
+}
+@media(max-width:700px){
+  .schedule-day-head{align-items:flex-start}
+  .schedule-table{min-width:700px}
+}

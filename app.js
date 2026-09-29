@@ -213,14 +213,18 @@ function roundDateText(r){
 
 function renderTabs(){
   const el=$("#roundTabs");
-  el.innerHTML = DATA.rounds.map(r=>`<button class="tab ${currentRound===r.round?'active':''}" data-round="${r.round}">Runde ${r.round}</button>`).join("")
-    + `<button class="tab stats ${currentRound==='stats'?'active':''}" data-stats="1">Spillerstatistik</button>`;
+  el.innerHTML =
+    `<button class="tab ${currentRound==='schedule'?'active':''}" data-schedule="1">Kampprogram</button>` +
+    DATA.rounds.map(r=>`<button class="tab ${currentRound===r.round?'active':''}" data-round="${r.round}">Runde ${r.round}</button>`).join("") +
+    `<button class="tab stats ${currentRound==='stats'?'active':''}" data-stats="1">Spillerstatistik</button>`;
+  el.querySelector("[data-schedule]").onclick=()=>{currentRound='schedule';renderAll()};
   el.querySelectorAll("[data-round]").forEach(b=>b.onclick=()=>{currentRound=Number(b.dataset.round);renderAll()});
   el.querySelector("[data-stats]").onclick=()=>{currentRound='stats';statsMode='teams';renderAll()};
 }
 
 function renderRound(){
   $("#statsView").classList.add("hidden");
+  $("#scheduleView").classList.add("hidden");
   $("#roundView").classList.remove("hidden");
   const r=DATA.rounds.find(x=>x.round===currentRound);
   if(!r) return;
@@ -355,6 +359,78 @@ function openPlayerModal(teamId,slot){
   };
 }
 
+function formatScheduleDate(dateText){
+  const [day, month, year] = String(dateText).split("-").map(Number);
+  const d = new Date(year, month - 1, day);
+  return d.toLocaleDateString("da-DK", {weekday:"long", day:"numeric", month:"long"});
+}
+
+function renderSchedule(){
+  $("#roundView").classList.add("hidden");
+  $("#statsView").classList.add("hidden");
+  $("#scheduleView").classList.remove("hidden");
+
+  const groups=[];
+  for(const match of DATA.schedule){
+    let group=groups.find(g=>g.date===match.date);
+    if(!group){
+      group={date:match.date,day:match.day,matches:[]};
+      groups.push(group);
+    }
+    group.matches.push(match);
+  }
+
+  $("#scheduleView").innerHTML=`
+    <div class="round-head">
+      <div>
+        <h2>Kampprogram</h2>
+        <p>Alle Hjallerup U11-hold · kronologisk oversigt</p>
+      </div>
+    </div>
+    <div class="schedule-summary">
+      <span><strong>${DATA.schedule.length}</strong> kampe</span>
+      <span><strong>${DATA.teams.length}</strong> hold</span>
+      <span>Efterår 2026</span>
+    </div>
+    <div class="schedule-groups">
+      ${groups.map(group=>`
+        <section class="schedule-day">
+          <div class="schedule-day-head">
+            <div>
+              <h3>${escapeHtml(formatScheduleDate(group.date))}</h3>
+              <span>${group.matches.length} ${group.matches.length===1?"kamp":"kampe"}</span>
+            </div>
+            <strong>${escapeHtml(group.date)}</strong>
+          </div>
+          <div class="schedule-table-wrap">
+            <table class="schedule-table">
+              <thead>
+                <tr>
+                  <th>Kl.</th>
+                  <th>Hold</th>
+                  <th>H/U</th>
+                  <th>Modstander</th>
+                  <th>Spillested</th>
+                  <th>Runde</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${group.matches.map(m=>`
+                  <tr>
+                    <td class="schedule-time">${escapeHtml(m.time)}</td>
+                    <td><strong>${escapeHtml(m.teamName)}</strong></td>
+                    <td><span class="home-away ${m.homeAway==="Hjemme"?"home":"away"}">${m.homeAway==="Hjemme"?"H":"U"}</span></td>
+                    <td>${escapeHtml(m.opponent)}</td>
+                    <td class="schedule-venue">${escapeHtml(m.venue)}</td>
+                    <td><span class="round-pill">R${m.round}</span></td>
+                  </tr>`).join("")}
+              </tbody>
+            </table>
+          </div>
+        </section>`).join("")}
+    </div>`;
+}
+
 function buildStats(){
   const grouped=DATA.teams.map(team=>{
     const players=team.players.map(p=>{
@@ -382,6 +458,7 @@ function buildStats(){
 
 function renderStats(){
   $("#roundView").classList.add("hidden");
+  $("#scheduleView").classList.add("hidden");
   $("#statsView").classList.remove("hidden");
 
   const grouped=buildStats();
@@ -431,7 +508,12 @@ function renderStats(){
   document.querySelectorAll('[data-stats-mode]').forEach(btn=>btn.onclick=()=>{statsMode=btn.dataset.statsMode;renderStats();});
 }
 
-function renderAll(){renderTabs(); currentRound==='stats'?renderStats():renderRound();}
+function renderAll(){
+  renderTabs();
+  if(currentRound==='stats') renderStats();
+  else if(currentRound==='schedule') renderSchedule();
+  else renderRound();
+}
 
 function toast(msg){
   const t=$("#toast"); t.textContent=msg; t.classList.add("show");
