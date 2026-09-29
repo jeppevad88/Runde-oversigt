@@ -1,43 +1,9 @@
-# U11 Holdfordeler v5 – GitHub + Supabase
+# U11 Holdoversigt – v13
 
-Fælles webværktøj til at fordele U11-spillere på kampe.
+Denne version bygger videre på v12.
 
-## Funktioner
-- Én fane pr. spillerunde
-- Kun Hjallerup-hold med kamp i den valgte runde vises
-- Maks. 8 spillere pr. hold
-- Spillere kan lånes til flere hold i samme runde – også 2 eller 3 hold
-- En spiller kan fjernes ved afbud
-- Afbud gemmes og vises i en særskilt boks under holdet
-- Spillerstatistik grupperes efter spillerens oprindelige hold
-- Statistik viser egne kampe, ekstra kampe for andre hold og hvilke hold
-- Fælles lagring i Supabase
-
-## GitHub Pages
-Upload alle filer til repositoryets rod og vælg:
-- Settings → Pages
-- Deploy from a branch
-- Branch: main
-- Folder: / (root)
-
-## Supabase
-`supabase.sql` bruges til den oprindelige tabelopsætning.
-
-Den nuværende version gemmer holdets pladser og afbud samlet i JSON-feltet `players`, så databasen ikke behøver en ny kolonne.
-
-
-## v5
-Første opstart kan automatisk oprette grunddata i `u11_state`, hvis tabellen er tom. Forbindelsesfejl vises tydeligt i statusfeltet i stedet for at hænge på “Forbinder…”. Supabase skal ikke seedes manuelt.
-
-
-### Layout
-Versionen bruger Hjallerup IF-logoet som diskret vandmærke. Husk at uploade `Hjallerup-IF-Logo.jpg` sammen med de øvrige filer.
-
-
-## v9
-- Lånte spillere vises med grøn skrift og LÅN-markering.
-- Afbud har et kommentarfelt til årsag. Kommentaren gemmes sammen med afbuddet i Supabase via den eksisterende JSONB-state.
-
-
-### Nyt i denne version
-- Ny fane **Kampprogram** med alle 66 Hjallerup U11-kampe fra det uploadede samlede kampprogram, sorteret kronologisk efter dato og klokkeslæt.
+## Nyt i v13
+- Under hovedfanen **Kampprogram** er der nu underfaner.
+- **Samlet kampprogram** viser alle Hjallerup-kampe kronologisk.
+- Der er én underfane for hvert hold (**Hjallerup 1–7**) med kun det pågældende holds kampe.
+- Supabase-opsætningen er uændret.

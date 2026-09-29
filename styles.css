@@ -254,3 +254,39 @@ td strong{font-weight:800}
   .schedule-day-head{align-items:flex-start}
   .schedule-table{min-width:700px}
 }
+
+/* Underfaner til kampprogram */
+.schedule-switch{
+  display:flex;
+  gap:6px;
+  margin:-4px 0 14px;
+  padding:4px;
+  background:#e8eef5;
+  border:1px solid var(--line);
+  border-radius:10px;
+  max-width:100%;
+  overflow:auto;
+  scrollbar-width:thin;
+}
+.schedule-switch-btn{
+  flex:0 0 auto;
+  border:0;
+  background:transparent;
+  color:#405365;
+  border-radius:8px;
+  padding:8px 11px;
+  font-size:.75rem;
+  font-weight:850;
+  cursor:pointer;
+  white-space:nowrap;
+}
+.schedule-switch-btn:hover{background:rgba(255,255,255,.7)}
+.schedule-switch-btn.active{
+  background:var(--green);
+  color:#fff;
+  box-shadow:0 1px 5px rgba(16,63,105,.18);
+}
+@media(max-width:700px){
+  .schedule-switch{width:100%}
+  .schedule-switch-btn{flex:0 0 auto;padding:8px 10px}
+}

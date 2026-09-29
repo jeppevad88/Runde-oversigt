@@ -38,7 +38,6 @@ function getInitialRound(){
 
 let currentRound = getInitialRound();
 let statsMode = 'teams';
-let scheduleMode = 'all';
 let usingLocalFallback = false;
 
 const $ = (sel) => document.querySelector(sel);
@@ -218,7 +217,7 @@ function renderTabs(){
     `<button class="tab ${currentRound==='schedule'?'active':''}" data-schedule="1">Kampprogram</button>` +
     DATA.rounds.map(r=>`<button class="tab ${currentRound===r.round?'active':''}" data-round="${r.round}">Runde ${r.round}</button>`).join("") +
     `<button class="tab stats ${currentRound==='stats'?'active':''}" data-stats="1">Spillerstatistik</button>`;
-  el.querySelector("[data-schedule]").onclick=()=>{currentRound='schedule';scheduleMode='all';renderAll()};
+  el.querySelector("[data-schedule]").onclick=()=>{currentRound='schedule';renderAll()};
   el.querySelectorAll("[data-round]").forEach(b=>b.onclick=()=>{currentRound=Number(b.dataset.round);renderAll()});
   el.querySelector("[data-stats]").onclick=()=>{currentRound='stats';statsMode='teams';renderAll()};
 }
@@ -366,18 +365,13 @@ function formatScheduleDate(dateText){
   return d.toLocaleDateString("da-DK", {weekday:"long", day:"numeric", month:"long"});
 }
 
-function scheduleSortedMatches(matches){
-  return [...matches].sort((a,b)=>{
-    const da=parseMatchDate(a.date).getTime();
-    const db=parseMatchDate(b.date).getTime();
-    if(da!==db) return da-db;
-    return String(a.time).localeCompare(String(b.time));
-  });
-}
+function renderSchedule(){
+  $("#roundView").classList.add("hidden");
+  $("#statsView").classList.add("hidden");
+  $("#scheduleView").classList.remove("hidden");
 
-function scheduleGroups(matches){
   const groups=[];
-  for(const match of scheduleSortedMatches(matches)){
+  for(const match of DATA.schedule){
     let group=groups.find(g=>g.date===match.date);
     if(!group){
       group={date:match.date,day:match.day,matches:[]};
@@ -385,12 +379,20 @@ function scheduleGroups(matches){
     }
     group.matches.push(match);
   }
-  return groups;
-}
 
-function renderScheduleTable(matches){
-  const groups=scheduleGroups(matches);
-  return `<div class="schedule-groups">
+  $("#scheduleView").innerHTML=`
+    <div class="round-head">
+      <div>
+        <h2>Kampprogram</h2>
+        <p>Alle Hjallerup U11-hold · kronologisk oversigt</p>
+      </div>
+    </div>
+    <div class="schedule-summary">
+      <span><strong>${DATA.schedule.length}</strong> kampe</span>
+      <span><strong>${DATA.teams.length}</strong> hold</span>
+      <span>Efterår 2026</span>
+    </div>
+    <div class="schedule-groups">
       ${groups.map(group=>`
         <section class="schedule-day">
           <div class="schedule-day-head">
@@ -427,42 +429,6 @@ function renderScheduleTable(matches){
           </div>
         </section>`).join("")}
     </div>`;
-}
-
-function renderSchedule(){
-  $("#roundView").classList.add("hidden");
-  $("#statsView").classList.add("hidden");
-  $("#scheduleView").classList.remove("hidden");
-
-  const selectedTeam = scheduleMode !== 'all' ? teamMap[scheduleMode] : null;
-  const matches = scheduleMode === 'all'
-    ? DATA.schedule
-    : DATA.schedule.filter(m=>m.teamId===scheduleMode);
-
-  const subTabs=`<div class="schedule-switch" role="tablist" aria-label="Kampprogramvisning">
-    <button class="schedule-switch-btn ${scheduleMode==='all'?'active':''}" data-schedule-mode="all">Samlet kampprogram</button>
-    ${DATA.teams.map(team=>`<button class="schedule-switch-btn ${scheduleMode===team.id?'active':''}" data-schedule-mode="${team.id}">${escapeHtml(team.name)}</button>`).join('')}
-  </div>`;
-
-  $("#scheduleView").innerHTML=`
-    <div class="round-head">
-      <div>
-        <h2>${selectedTeam ? escapeHtml(selectedTeam.name) : 'Kampprogram'}</h2>
-        <p>${selectedTeam ? `Kun kampe for ${escapeHtml(selectedTeam.name)} · kronologisk oversigt` : 'Alle Hjallerup U11-hold · kronologisk oversigt'}</p>
-      </div>
-    </div>
-    ${subTabs}
-    <div class="schedule-summary">
-      <span><strong>${matches.length}</strong> ${matches.length===1?'kamp':'kampe'}</span>
-      <span>${selectedTeam ? escapeHtml(selectedTeam.name) : `${DATA.teams.length} hold`}</span>
-      <span>Efterår 2026</span>
-    </div>
-    ${matches.length ? renderScheduleTable(matches) : '<div class="notice">Der er ingen kampe registreret for dette hold.</div>'}`;
-
-  document.querySelectorAll('[data-schedule-mode]').forEach(btn=>btn.onclick=()=>{
-    scheduleMode=btn.dataset.scheduleMode;
-    renderSchedule();
-  });
 }
 
 function buildStats(){
