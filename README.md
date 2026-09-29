@@ -28,3 +28,7 @@ Den nuværende version gemmer holdets pladser og afbud samlet i JSON-feltet `pla
 
 ## v5
 Første opstart kan automatisk oprette grunddata i `u11_state`, hvis tabellen er tom. Forbindelsesfejl vises tydeligt i statusfeltet i stedet for at hænge på “Forbinder…”. Supabase skal ikke seedes manuelt.
+
+
+### Layout
+Versionen bruger Hjallerup IF-logoet som diskret vandmærke. Husk at uploade `Hjallerup-IF-Logo.jpg` sammen med de øvrige filer.
