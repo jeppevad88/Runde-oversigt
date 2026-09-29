@@ -266,6 +266,7 @@ function renderTeamCard(m){
           <span class="absence-dot">!</span>
           <strong>${escapeHtml(p.name)}</strong>
           ${p.originalTeamId!==m.teamId?`<span class="absence-note">lånt spiller</span>`:""}
+          <button class="absence-remove" type="button" title="Fjern fra afbudslisten" data-absence-remove="${m.teamId}" data-player-id="${p.playerId}">×</button>
         </div>
         <input class="absence-reason" type="text" maxlength="120" value="${escapeHtml(p.reason||"")}" placeholder="Årsag til afbud…" data-absence-reason="${m.teamId}" data-player-id="${p.playerId}">
       </div>`).join("")
@@ -307,6 +308,16 @@ function attachTeamActions(){
       setAbsenceReason(currentRound,teamId,playerId,input.value.trim());
       await saveRoster(currentRound,teamId);
     };
+  });
+  document.querySelectorAll("[data-absence-remove]").forEach(btn=>btn.onclick=async()=>{
+    const teamId=btn.dataset.absenceRemove;
+    const playerId=btn.dataset.playerId;
+    const absence=getAbsences(currentRound,teamId).find(x=>x.playerId===playerId);
+    if(!absence) return;
+    removeAbsence(currentRound,teamId,playerId);
+    renderRound(); renderTabs();
+    await saveRoster(currentRound,teamId);
+    toast(`${absence.name} er fjernet fra afbudslisten`);
   });
 }
 

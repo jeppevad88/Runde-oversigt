@@ -96,6 +96,8 @@ td strong{font-weight:800}
 .absence-row:last-child{border-bottom:0}
 .absence-dot{width:16px;height:16px;border-radius:50%;background:#e9b8b8;color:#8f2525;display:inline-flex;align-items:center;justify-content:center;font-size:.68rem;font-weight:900}
 .absence-note{margin-left:auto;font-size:.7rem;color:#9a7777}
+.absence-remove{margin-left:4px;width:22px;height:22px;border:0;border-radius:6px;background:#f7e0e0;color:#a04444;font-size:1rem;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 auto}
+.absence-remove:hover{background:#efcaca;color:#8e2f2f}
 .no-absence{padding:8px 2px;color:#a07c7c;font-size:.8rem;font-style:italic}
 .stats-groups{display:grid;gap:18px}
 .stats-team{background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
