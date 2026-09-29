@@ -37,6 +37,7 @@ main{max-width:1500px;margin:0 auto;padding:24px clamp(12px,3vw,32px) 60px}
 .player-number{width:20px;color:#a0aaa1;font-size:.66rem;text-align:center}
 .player-name{flex:1;font-weight:650;font-size:.78rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .player-name.empty{color:#a2aaa3;font-weight:500;font-style:italic}
+.loaned-player{color:#179447;font-weight:800}
 .loan-tag{font-size:.68rem;padding:3px 6px;border-radius:6px;background:#fff2d8;color:#8a5a00;font-weight:800}
 .player-actions{display:flex;gap:5px}
 .icon-btn,.add-btn{border:0;cursor:pointer;border-radius:8px}
@@ -84,7 +85,10 @@ td strong{font-weight:800}
 .absence-head{display:flex;justify-content:space-between;align-items:center;padding:9px 11px;background:#fff1f1;color:#9a2d2d;font-weight:800;font-size:.8rem;text-transform:uppercase;letter-spacing:.04em}
 .absence-count{min-width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;background:#f7dede;color:#9a2d2d;font-size:.72rem}
 .absence-list{padding:3px 10px 5px}
-.absence-row{display:flex;align-items:center;gap:6px;min-height:28px;border-bottom:1px solid #f4e5e5;font-size:.86rem}
+.absence-row{display:flex;flex-direction:column;align-items:stretch;gap:5px;padding:6px 0;border-bottom:1px solid #f4e5e5;font-size:.82rem}
+.absence-main{display:flex;align-items:center;gap:6px;min-height:22px}
+.absence-reason{width:100%;box-sizing:border-box;border:1px solid #e8d5d5;background:#fff;border-radius:7px;padding:5px 7px;font:inherit;font-size:.74rem;color:#5f5555;outline:none}
+.absence-reason:focus{border-color:#d89a9a;box-shadow:0 0 0 2px rgba(216,154,154,.12)}
 .absence-row:last-child{border-bottom:0}
 .absence-dot{width:16px;height:16px;border-radius:50%;background:#e9b8b8;color:#8f2525;display:inline-flex;align-items:center;justify-content:center;font-size:.68rem;font-weight:900}
 .absence-note{margin-left:auto;font-size:.7rem;color:#9a7777}

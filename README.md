@@ -32,3 +32,8 @@ Første opstart kan automatisk oprette grunddata i `u11_state`, hvis tabellen er
 
 ### Layout
 Versionen bruger Hjallerup IF-logoet som diskret vandmærke. Husk at uploade `Hjallerup-IF-Logo.jpg` sammen med de øvrige filer.
+
+
+## v9
+- Lånte spillere vises med grøn skrift og LÅN-markering.
+- Afbud har et kommentarfelt til årsag. Kommentaren gemmes sammen med afbuddet i Supabase via den eksisterende JSONB-state.

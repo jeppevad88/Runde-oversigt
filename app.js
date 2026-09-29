@@ -13,7 +13,30 @@ const DATA = window.APP_DATA;
 const teamMap = Object.fromEntries(DATA.teams.map(t => [t.id, t]));
 const playerMap = Object.fromEntries(DATA.teams.flatMap(t => t.players.map(p => [p.id, {...p, originalTeamId:t.id}])));
 let rosterState = {}; // key: round-team -> {slots: [], absences: []}
-let currentRound = 1;
+function getCurrentDateLocal(){
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+function parseMatchDate(dateText){
+  const [day, month, year] = String(dateText).split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function getInitialRound(){
+  const today = getCurrentDateLocal();
+  const rounds = [...DATA.rounds].sort((a,b)=>a.round-b.round);
+
+  // Keep the user on a round as long as at least one match in that round
+  // is today or in the future. Once every match date has passed, move on.
+  const nextRound = rounds.find(r =>
+    r.matches.some(m => parseMatchDate(m.date).getTime() >= today.getTime())
+  );
+
+  return nextRound ? nextRound.round : (rounds.length ? rounds[rounds.length - 1].round : 1);
+}
+
+let currentRound = getInitialRound();
 let statsMode = 'teams';
 let usingLocalFallback = false;
 
@@ -60,7 +83,11 @@ function getAbsences(round, teamId){ return getState(round,teamId).absences; }
 
 function setAbsence(round, teamId, player){
   const absences=getAbsences(round,teamId);
-  if(!absences.some(x=>x.playerId===player.playerId)) absences.push({...player});
+  if(!absences.some(x=>x.playerId===player.playerId)) absences.push({...player, reason:""});
+}
+function setAbsenceReason(round, teamId, playerId, reason){
+  const absence=getAbsences(round,teamId).find(x=>x.playerId===playerId);
+  if(absence) absence.reason=reason;
 }
 function removeAbsence(round, teamId, playerId){
   const state=getState(round,teamId);
@@ -222,14 +249,21 @@ function renderTeamCard(m){
     const isLoan=p.originalTeamId!==m.teamId;
     return `<div class="player-row">
       <div class="player-number">${i+1}</div>
-      <div class="player-name">${escapeHtml(p.name)}</div>
+      <div class="player-name ${isLoan?"loaned-player":""}">${escapeHtml(p.name)}</div>
       ${isLoan?`<span class="loan-tag">LÅN</span>`:""}
       <div class="player-actions"><button class="icon-btn remove" title="Fjern spiller" data-remove="${m.teamId}" data-slot="${i}">×</button></div>
     </div>`;
   }).join("");
 
   const absencesHtml=absences.length
-    ? absences.map(p=>`<div class="absence-row"><span class="absence-dot">!</span><strong>${escapeHtml(p.name)}</strong>${p.originalTeamId!==m.teamId?`<span class="absence-note">lånt spiller</span>`:""}</div>`).join("")
+    ? absences.map(p=>`<div class="absence-row">
+        <div class="absence-main">
+          <span class="absence-dot">!</span>
+          <strong>${escapeHtml(p.name)}</strong>
+          ${p.originalTeamId!==m.teamId?`<span class="absence-note">lånt spiller</span>`:""}
+        </div>
+        <input class="absence-reason" type="text" maxlength="120" value="${escapeHtml(p.reason||"")}" placeholder="Årsag til afbud…" data-absence-reason="${m.teamId}" data-player-id="${p.playerId}">
+      </div>`).join("")
     : `<div class="no-absence">Ingen registrerede afbud</div>`;
 
   return `<article class="team-card">
@@ -260,6 +294,14 @@ function attachTeamActions(){
   });
   document.querySelectorAll("[data-add]").forEach(btn=>btn.onclick=()=>{
     openPlayerModal(btn.dataset.add,Number(btn.dataset.slot));
+  });
+  document.querySelectorAll("[data-absence-reason]").forEach(input=>{
+    input.onchange=async()=>{
+      const teamId=input.dataset.absenceReason;
+      const playerId=input.dataset.playerId;
+      setAbsenceReason(currentRound,teamId,playerId,input.value.trim());
+      await saveRoster(currentRound,teamId);
+    };
   });
 }
 
