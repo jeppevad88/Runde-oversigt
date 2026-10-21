@@ -99,6 +99,10 @@ window.APP_DATA = {
         {
           "id": "p21",
           "name": "Mikkel Kjær"
+        },
+        {
+          "id": "p48",
+          "name": "Lauge De Fries"
         }
       ]
     },

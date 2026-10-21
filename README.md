@@ -1,19 +1,23 @@
-# U11 Holdoversigt – v15
+# U11 Holdoversigt – iCal version 17
 
-Denne version bygger videre på v12.
+Denne version bevarer den eksisterende U11-hjemmeside og henter kampprogrammet fra de syv iCal-kalendere via en Supabase Edge Function.
 
-## Nyt i v15
-- Under hovedfanen **Kampprogram** er der nu underfaner.
-- **Samlet kampprogram** viser alle Hjallerup-kampe kronologisk.
-- Der er én underfane for hvert hold (**Hjallerup 1–7**) med kun det pågældende holds kampe.
-- Supabase-opsætningen er uændret.
+## Hvorfor Edge Function?
+GitHub Pages kører i browseren. Dansk Håndbolds iCal-server tillader ikke nødvendigvis direkte browser-hentning (CORS), og det kunne få siden til at stå på “Forbinder…” i stedet for at indlæse resten af appen. Edge Function henter kalenderfilerne server-side.
 
+## Installation
+1. Upload filerne i denne ZIP til test-repositoryet (behold den eksisterende Supabase-konfiguration i `config.js`).
+2. Installer Supabase CLI, og log ind:
+   `supabase login`
+3. Fra mappen med projektet, link til det eksisterende Supabase-projekt:
+   `supabase link --project-ref jgcufgjezxxrbxarucam`
+4. Deploy funktionen:
+   `supabase functions deploy u11-ical-sync`
+5. Kontrollér, at GitHub Pages bruger den testgren/branch, som du ønsker at teste, eller at filerne er committed til den branch, som GitHub Pages publicerer.
+6. Genindlæs siden. Hvis funktionen er deployet, bør statuslinjen sige, at kampprogrammet er opdateret fra iCal.
 
-### v15
-Afbud kan nu fjernes helt fra afbudslisten via ×. Det er især nyttigt, når en lånt spiller fjernes fra et hold og ikke skal stå som afbud.
-
-
-### Kampprogram v15
-- Samlet kampprogram viser kun kommende kampe.
-- Spillede kampe har egen underfane og vises, når kampdatoen er før dags dato.
-- Holdfanerne bevares med det enkelte holds kampe.
+## Vigtigt
+- Dette ændrer ikke `u11_state` eller spillerdata i Supabase.
+- Den aktive hjemmeside bør ikke ændres, før testversionen er kontrolleret.
+- Hvis Edge Function ikke er deployet, bruger appen det indbyggede kampprogram og forsøger stadig at indlæse spillerdata.
+- Kalendernes klokkeslæt og puljer skal verificeres på den publicerede testside, før versionen bruges i drift.

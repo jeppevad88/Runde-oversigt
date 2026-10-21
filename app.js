@@ -1,3 +1,161 @@
+// Hent kampprogrammet via Supabase Edge Function.
+// Browseren kan ikke nødvendigvis hente Dansk Håndbolds iCal-filer direkte (CORS).
+const ICAL_FEEDS = [
+  {teamId:"hold1"},
+  {teamId:"hold2"},
+  {teamId:"hold3"},
+  {teamId:"hold4"},
+  {teamId:"hold5"},
+  {teamId:"hold6"},
+  {teamId:"hold7"}
+];
+
+function unescapeIcal(value=""){
+  return String(value).replace(/\\n/gi," ").replace(/\\,/g,",").replace(/\\;/g,";").replace(/\\\\/g,"\\").trim();
+}
+function unfoldIcal(text){
+  return text.replace(/\r?\n[ \t]/g, "").split(/\r?\n/);
+}
+function parseIcalDate(value, params=""){
+  if(!value) return null;
+  const raw=value.trim();
+  const match=raw.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?)?(Z)?$/);
+  if(!match) return null;
+  const [,ys,mos,ds,hs="00",mis="00",ss="00",z] = match;
+  const y=Number(ys), mo=Number(mos)-1, d=Number(ds), h=Number(hs), mi=Number(mis), s=Number(ss);
+  if(z){
+    // iCal UTC-tider konverteres til dansk lokal tid med Intl, så datoen ikke forskydes.
+    const utc=new Date(Date.UTC(y,mo,d,h,mi,s));
+    const parts=new Intl.DateTimeFormat("en-GB",{timeZone:"Europe/Copenhagen",day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(utc);
+    const part=Object.fromEntries(parts.map(p=>[p.type,p.value]));
+    const localDate=`${part.day}-${part.month}-${part.year}`;
+    const localTime=`${part.hour}:${part.minute}`;
+    return {date:localDate,time:localTime,sort:utc.getTime()};
+  }
+  const dt=new Date(y,mo,d,h,mi,s);
+  return {date:`${String(d).padStart(2,"0")}-${String(mo+1).padStart(2,"0")}-${y}`,time:`${String(h).padStart(2,"0")}:${String(mi).padStart(2,"0")}`,sort:dt.getTime()};
+}
+function parseIcalEvents(text, teamId){
+  const lines=unfoldIcal(text);
+  const events=[]; let event=null;
+  for(const line of lines){
+    if(line.trim()==="BEGIN:VEVENT"){event={};continue;}
+    if(line.trim()==="END:VEVENT"){
+      if(event?.start && event?.summary){
+        const summary=unescapeIcal(event.summary);
+        const parts=summary.split(/\s+(?:-|–|—|mod)\s+/i).map(x=>x.trim()).filter(Boolean);
+        let home=parts[0]||summary, away=parts.slice(1).join(" - ")||"Modstander";
+        if(parts.length>1 && !home.toLowerCase().includes("hjallerup") && away.toLowerCase().includes("hjallerup")){const tmp=home;home=away;away=tmp;}
+        const start=event.start;
+        events.push({teamId,time:start.time,date:start.date,_sort:start.sort,
+          home,away,venue:unescapeIcal(event.location||""),
+          day:new Intl.DateTimeFormat("da-DK",{weekday:"short",timeZone:"Europe/Copenhagen"}).format(new Date(start.sort)).replace(".","").slice(0,3),
+          matchNo:(`${event.description||""} ${event.url||""}`).match(/(?:kamp(?:nr|nummer)?\s*[:#]?\s*)(\d{5,})/i)?.[1] || event.uid || `${teamId}-${start.sort}`});
+      }
+      event=null; continue;
+    }
+    if(!event) continue;
+    const colon=line.indexOf(":"); if(colon<0) continue;
+    const keyPart=line.slice(0,colon), value=line.slice(colon+1);
+    const key=keyPart.split(";")[0].toUpperCase();
+    if(key==="DTSTART") event.start=parseIcalDate(value,keyPart);
+    else if(key==="SUMMARY") event.summary=value;
+    else if(key==="LOCATION") event.location=value;
+    else if(key==="DESCRIPTION") event.description=value;
+    else if(key==="UID") event.uid=value;
+    else if(key==="URL") event.url=value;
+  }
+  return events;
+}
+async function loadIcalSchedule(){
+  try{
+    if(!sb) throw new Error("Supabase er ikke initialiseret");
+    // Timeout sikrer, at resten af hjemmesiden stadig åbner, hvis importen fejler.
+    const result=await withTimeout(sb.functions.invoke("u11-ical-sync"),15000);
+    if(result.error) throw result.error;
+    const calendars=result.data?.calendars;
+    if(!Array.isArray(calendars) || calendars.length!==7) throw new Error("iCal-funktionen returnerede ikke alle syv kalendere");
+    const results=calendars.map(calendar=>{
+      if(typeof calendar.ical!=="string" || !calendar.ical.includes("BEGIN:VCALENDAR")) throw new Error(`Ugyldig kalender for ${calendar.teamId}`);
+      const events=parseIcalEvents(calendar.ical,calendar.teamId);
+      if(!events.length) throw new Error(`Ingen kampe fundet i kalenderen for ${calendar.teamId}`);
+      return events;
+    });
+    // Saml alle kampe fra de syv kalendere og gruppér dem efter kalenderuge.
+    // Mandag er ugens start, så alle kampe i samme uge vises i samme runde.
+    const allMatches = results.flat().sort((a, b) => a._sort - b._sort);
+    const weeks = new Map();
+
+    for (const match of allMatches) {
+      const [day, month, year] = match.date.split("-").map(Number);
+      const localDate = new Date(year, month - 1, day);
+      const weekdayFromMonday = (localDate.getDay() + 6) % 7;
+      localDate.setDate(localDate.getDate() - weekdayFromMonday);
+
+      const weekKey = [
+        localDate.getFullYear(),
+        String(localDate.getMonth() + 1).padStart(2, "0"),
+        String(localDate.getDate()).padStart(2, "0")
+      ].join("-");
+
+      if (!weeks.has(weekKey)) weeks.set(weekKey, []);
+      weeks.get(weekKey).push(match);
+    }
+
+    const rounds = [...weeks.entries()]
+      .sort(([weekA], [weekB]) => weekA.localeCompare(weekB))
+      .map(([weekKey, matches], index) => ({
+        round: index + 1,
+        weekStart: weekKey,
+        matches: matches
+          .sort((a, b) => a._sort - b._sort)
+          .map(({ _sort, ...match }) => match)
+      }));
+
+    // Særlig undtagelse: Hold 3's kamp den 7. oktober skal ligge i runde 2,
+    // selv om den falder i en anden kalenderuge.
+    const hold3October7 = [];
+    for (const round of rounds) {
+      round.matches = round.matches.filter(match => {
+        const isSpecialMatch = match.teamId === "hold3" && match.date === "07-10-2026";
+        if (isSpecialMatch) hold3October7.push(match);
+        return !isSpecialMatch;
+      });
+    }
+    if (rounds.length >= 2 && hold3October7.length) {
+      rounds[1].matches.push(...hold3October7);
+      rounds[1].matches.sort((a, b) => {
+        const [ad, am, ay] = a.date.split("-").map(Number);
+        const [bd, bm, by] = b.date.split("-").map(Number);
+        return new Date(ay, am - 1, ad) - new Date(by, bm - 1, bd)
+          || String(a.time || "").localeCompare(String(b.time || ""));
+      });
+    }
+
+    // Slå de oprindelige runde 2 og 3 sammen til én runde 2.
+    // Kampene kan ligge i forskellige kalenderuger, men skal vises samlet.
+    if (rounds.length >= 3) {
+      rounds[1].matches.push(...rounds[2].matches);
+      rounds[1].matches.sort((a, b) => {
+        const [ad, am, ay] = a.date.split("-").map(Number);
+        const [bd, bm, by] = b.date.split("-").map(Number);
+        return new Date(ay, am - 1, ad) - new Date(by, bm - 1, bd)
+          || String(a.time || "").localeCompare(String(b.time || ""));
+      });
+      rounds.splice(2, 1);
+      rounds.forEach((round, index) => { round.round = index + 1; });
+    }
+
+    if (!rounds.length) throw new Error("iCal-kalenderne indeholdt ingen kampe");
+    DATA.rounds = rounds;
+    window.__ICAL_SCHEDULE_LOADED__=true;
+    console.info(`iCal-kampprogram indlæst: ${results.flat().length} kampe`);
+  }catch(error){
+    console.warn("Kunne ikke hente iCal-kampprogram; bruger indbyggede kampe i stedet.",error);
+    window.__ICAL_SCHEDULE_ERROR__=error?.message || "Ukendt fejl ved iCal-import";
+  }
+}
+
 let sb = null;
 let supabaseInitError = null;
 try {
@@ -45,15 +203,17 @@ const $ = (sel) => document.querySelector(sel);
 
 function rosterKey(round, teamId){ return `${round}-${teamId}`; }
 
-function baseRoster(teamId){
+function baseRoster(teamId, roundNo=1){
   const team = teamMap[teamId];
-  return [...team.players.map(p => ({playerId:p.id,name:p.name,originalTeamId:teamId,kind:"fast"})),
-          ...Array.from({length:Math.max(0,8-team.players.length)},()=>null)];
+  // Lauge De Fries er først fast på Hold 3 fra runde 3.
+  const players = team.players.filter(p => !(teamId === "hold3" && p.id === "p48" && roundNo < 3));
+  return [...players.map(p => ({playerId:p.id,name:p.name,originalTeamId:teamId,kind:"fast"})),
+          ...Array.from({length:Math.max(0,8-players.length)},()=>null)];
 }
 
 function cloneRoster(arr){ return arr.map(x => x ? {...x} : null); }
 
-function normalizeStored(value, teamId){
+function normalizeStored(value, teamId, roundNo=1){
   // Backwards compatible with the old database format, where `players` was just an array.
   let slots = Array.isArray(value) ? value : (value && Array.isArray(value.slots) ? value.slots : []);
   let absences = Array.isArray(value && value.absences) ? value.absences : [];
@@ -63,6 +223,35 @@ function normalizeStored(value, teamId){
   slots = slots.filter(x => !(teamId === "hold5" && x && x.playerId === "p33" && x.kind !== "loan"));
   slots = slots.slice(0,8).map(x => x && x.playerId ? x : null);
   while(slots.length < 8) slots.push(null);
+
+  // Lauge De Fries (p48) er først fast på Hold 3 fra runde 3.
+  // I runde 1 og 2 fjernes han uden at overskrive tidligere lånespillere.
+  if (teamId === "hold3" && roundNo < 3) {
+    slots = slots.filter(x => !(x && x.playerId === "p48"));
+    while (slots.length < 8) slots.push(null);
+    slots = slots.slice(0,8);
+  } else if (teamId === "hold3" && playerMap["p48"] && !slots.some(x => x && x.playerId === "p48")) {
+    const emptySlot = slots.findIndex(x => !x);
+    if (emptySlot >= 0) {
+      slots[emptySlot] = {
+        playerId: "p48",
+        name: playerMap["p48"].name,
+        originalTeamId: "hold3",
+        kind: "fast"
+      };
+    } else {
+      // Fra runde 3 prioriteres den faste spiller frem for en låneplads.
+      const loanSlot = slots.map((x, i) => x && x.kind === "loan" ? i : -1).filter(i => i >= 0).pop();
+      if (loanSlot !== undefined) {
+        slots[loanSlot] = {
+          playerId: "p48",
+          name: playerMap["p48"].name,
+          originalTeamId: "hold3",
+          kind: "fast"
+        };
+      }
+    }
+  }
 
   // Clean old/duplicate absence entries and never show an absence for someone currently on the team.
   const currentIds = new Set(slots.filter(Boolean).map(x => x.playerId));
@@ -75,7 +264,7 @@ function normalizeStored(value, teamId){
 
 function getState(round, teamId){
   const key=rosterKey(round,teamId);
-  if(!rosterState[key]) rosterState[key]={slots:baseRoster(teamId),absences:[]};
+  if(!rosterState[key]) rosterState[key]={slots:baseRoster(teamId,round),absences:[]};
   return rosterState[key];
 }
 
@@ -110,7 +299,7 @@ function initializeBaseRosters(){
   for(const r of DATA.rounds){
     for(const m of r.matches){
       const key=rosterKey(r.round,m.teamId);
-      if(!rosterState[key]) rosterState[key]={slots:baseRoster(m.teamId),absences:[]};
+      if(!rosterState[key]) rosterState[key]={slots:baseRoster(m.teamId,r.round),absences:[]};
     }
   }
 }
@@ -132,7 +321,7 @@ function applyStoredState(state){
   for(const [key,value] of Object.entries(rounds)){
     const parts=key.split("-");
     const teamId=parts.slice(1).join("-");
-    rosterState[key]=normalizeStored(value,teamId);
+    rosterState[key]=normalizeStored(value,teamId,Number(parts[0]));
   }
   initializeBaseRosters();
 }
@@ -173,7 +362,7 @@ async function loadAll(){
       rosterState = Object.fromEntries(Object.entries(saved).map(([k,v])=>{
         const parts=k.split("-");
         const teamId=parts.slice(1).join("-");
-        return [k,normalizeStored(v,teamId)];
+        return [k,normalizeStored(v,teamId,Number(parts[0]))];
       }));
     }catch{}
     initializeBaseRosters();
@@ -583,7 +772,11 @@ function toast(msg){
 }
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));}
 
-loadAll();
+(async()=>{
+  await loadIcalSchedule();
+  await loadAll();
+  if(window.__ICAL_SCHEDULE_LOADED__) setStatus("Kampprogram opdateret fra iCal · fælles data gemmes automatisk");
+})();
 setInterval(async()=>{
   if(usingLocalFallback) return;
   try{
