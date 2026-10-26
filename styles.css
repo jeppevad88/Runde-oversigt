@@ -292,3 +292,21 @@ td strong{font-weight:800}
   .schedule-switch{width:100%}
   .schedule-switch-btn{flex:0 0 auto;padding:8px 10px}
 }
+
+/* Kampresultater og samlet kampstatistik */
+.match-result{display:flex;align-items:center;gap:8px;margin-top:8px;padding:6px 9px;border-radius:8px;background:#eaf5ed;color:var(--green-dark);width:max-content;max-width:100%}
+.match-result span{font-size:.78rem;color:var(--muted)}
+.match-result strong{font-size:1rem;font-variant-numeric:tabular-nums}
+.result-cell{min-width:155px}
+.score-editor{display:flex;align-items:center;gap:5px;white-space:nowrap}
+.score-editor input{width:42px;min-width:42px;padding:7px 4px;border:1px solid var(--line);border-radius:7px;text-align:center;font:inherit;font-weight:700;background:#fff;color:var(--text)}
+.score-save{border:0;border-radius:7px;background:var(--green-dark);color:#fff;font:inherit;font-weight:700;padding:7px 9px;cursor:pointer}
+.score-save:hover{filter:brightness(.94)}
+.saved-score{font-size:1rem;font-variant-numeric:tabular-nums;color:var(--green-dark);white-space:nowrap}
+.no-score{color:var(--muted)}
+.match-stats-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:18px 0}
+.match-stat{display:flex;flex-direction:column;gap:7px;padding:18px;border:1px solid var(--line);border-radius:12px;background:var(--card);box-shadow:var(--shadow,none)}
+.match-stat span{color:var(--muted);font-size:.9rem}
+.match-stat strong{font-size:clamp(1.5rem,3vw,2.2rem);line-height:1.1;font-variant-numeric:tabular-nums}
+.stats-footnote{color:var(--muted);font-size:.9rem;margin:0 0 18px}
+@media(max-width:650px){.match-stats-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.match-stat{padding:13px}.score-editor input{width:36px;min-width:36px}}

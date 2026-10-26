@@ -148,6 +148,12 @@ async function loadIcalSchedule(){
 
     if (!rounds.length) throw new Error("iCal-kalenderne indeholdt ingen kampe");
     DATA.rounds = rounds;
+    // Brug de aktuelle iCal-kampe både i rundevisningen og i Kampprogram.
+    DATA.schedule = rounds.flatMap(round => round.matches.map(m => {
+      const hjallerupHome = String(m.home||"").toLowerCase().includes("hjallerup");
+      return {...m, round: round.round, teamName: teamMap[m.teamId]?.name || m.teamId,
+        opponent: hjallerupHome ? m.away : m.home, homeAway: hjallerupHome ? "Hjemme" : "Ude"};
+    }));
     window.__ICAL_SCHEDULE_LOADED__=true;
     console.info(`iCal-kampprogram indlæst: ${results.flat().length} kampe`);
   }catch(error){
@@ -171,6 +177,7 @@ const DATA = window.APP_DATA;
 const teamMap = Object.fromEntries(DATA.teams.map(t => [t.id, t]));
 const playerMap = Object.fromEntries(DATA.teams.flatMap(t => t.players.map(p => [p.id, {...p, originalTeamId:t.id}])));
 let rosterState = {}; // key: round-team -> {slots: [], absences: []}
+let matchResults = {}; // key: team/date/time -> {homeGoals, awayGoals}
 function getCurrentDateLocal(){
   const now = new Date();
   return new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -295,6 +302,12 @@ function withTimeout(promise, ms=9000){
   ]);
 }
 
+function matchResultKey(m){
+  return [m.teamId, m.date, m.time].map(x=>String(x||"").trim().toLowerCase()).join("|");
+}
+function getMatchResult(m){ return matchResults[matchResultKey(m)] || null; }
+function resultIsEntered(r){ return !!r && r.homeGoals !== "" && r.awayGoals !== "" && Number.isFinite(Number(r.homeGoals)) && Number.isFinite(Number(r.awayGoals)); }
+function isHjallerupHome(m){ return String(m.home||"").toLowerCase().includes("hjallerup"); }
 function initializeBaseRosters(){
   for(const r of DATA.rounds){
     for(const m of r.matches){
@@ -312,11 +325,12 @@ function serializeState(){
       absences: value.absences || []
     };
   }
-  return {rounds, updatedAt:new Date().toISOString()};
+  return {rounds, matchResults, updatedAt:new Date().toISOString()};
 }
 
 function applyStoredState(state){
   rosterState={};
+  matchResults = state && state.matchResults && typeof state.matchResults === "object" ? state.matchResults : {};
   const rounds = state && typeof state === "object" && state.rounds && typeof state.rounds === "object" ? state.rounds : {};
   for(const [key,value] of Object.entries(rounds)){
     const parts=key.split("-");
@@ -359,11 +373,15 @@ async function loadAll(){
     usingLocalFallback = true;
     try{
       const saved = JSON.parse(localStorage.getItem("u11-rosters") || "{}");
-      rosterState = Object.fromEntries(Object.entries(saved).map(([k,v])=>{
-        const parts=k.split("-");
-        const teamId=parts.slice(1).join("-");
-        return [k,normalizeStored(v,teamId,Number(parts[0]))];
-      }));
+      if(saved && saved.rounds){
+        applyStoredState(saved);
+      }else{
+        rosterState = Object.fromEntries(Object.entries(saved).map(([k,v])=>{
+          const parts=k.split("-");
+          const teamId=parts.slice(1).join("-");
+          return [k,normalizeStored(v,teamId,Number(parts[0]))];
+        }));
+      }
     }catch{}
     initializeBaseRosters();
     const detail = err?.message ? ` · ${err.message}` : "";
@@ -376,7 +394,7 @@ async function loadAll(){
 async function saveRoster(round, teamId){
   const state=getState(round,teamId);
   if(usingLocalFallback){
-    localStorage.setItem("u11-rosters",JSON.stringify(rosterState));
+    localStorage.setItem("u11-rosters",JSON.stringify(serializeState()));
     setStatus("Gemt lokalt", true);
     return;
   }
@@ -388,7 +406,7 @@ async function saveRoster(round, teamId){
   if(error){
     console.error(error);
     usingLocalFallback=true;
-    localStorage.setItem("u11-rosters",JSON.stringify(rosterState));
+    localStorage.setItem("u11-rosters",JSON.stringify(serializeState()));
     setStatus("Gemmet lokalt – forbindelse fejlede", true);
     toast("Ændringen er gemt lokalt. Tjek Supabase.");
   }else{
@@ -406,10 +424,12 @@ function renderTabs(){
   el.innerHTML =
     `<button class="tab ${currentRound==='schedule'?'active':''}" data-schedule="1">Kampprogram</button>` +
     DATA.rounds.map(r=>`<button class="tab ${currentRound===r.round?'active':''}" data-round="${r.round}">Runde ${r.round}</button>`).join("") +
-    `<button class="tab stats ${currentRound==='stats'?'active':''}" data-stats="1">Spillerstatistik</button>`;
+    `<button class="tab stats ${currentRound==='stats'?'active':''}" data-stats="1">Spillerstatistik</button>` +
+    `<button class="tab stats ${currentRound==='matchstats'?'active':''}" data-matchstats="1">Kampstatistik</button>`;
   el.querySelector("[data-schedule]").onclick=()=>{currentRound='schedule';scheduleMode='all';renderAll()};
   el.querySelectorAll("[data-round]").forEach(b=>b.onclick=()=>{currentRound=Number(b.dataset.round);renderAll()});
   el.querySelector("[data-stats]").onclick=()=>{currentRound='stats';statsMode='teams';renderAll()};
+  el.querySelector("[data-matchstats]").onclick=()=>{currentRound='matchstats';renderAll()};
 }
 
 function renderRound(){
@@ -461,10 +481,12 @@ function renderTeamCard(m){
       </div>`).join("")
     : `<div class="no-absence">Ingen registrerede afbud</div>`;
 
+  const result=getMatchResult(m);
+  const resultHtml=resultIsEntered(result)?`<div class="match-result"><span>Resultat</span><strong>${escapeHtml(result.homeGoals)} – ${escapeHtml(result.awayGoals)}</strong></div>`:"";
   return `<article class="team-card">
     <div class="team-head">
       <div class="team-title"><h3>${team.name}</h3><span class="badge">${filled}/8 spillere</span></div>
-      <div class="match"><strong>${m.day} ${m.date} kl. ${m.time}</strong><br>${escapeHtml(m.home)} – ${escapeHtml(m.away)}<br><span class="venue">${escapeHtml(m.venue)}</span></div>
+      <div class="match"><strong>${m.day} ${m.date} kl. ${m.time}</strong><br>${escapeHtml(m.home)} – ${escapeHtml(m.away)}<br><span class="venue">${escapeHtml(m.venue)}</span>${resultHtml}</div>
     </div>
     <div class="roster">${playersHtml}</div>
     <div class="team-footer"><span>${filled<8?`${8-filled} ledige pladser`:"Holdet er fyldt"}</span>${filled<8?`<button class="add-btn" data-add="${m.teamId}" data-slot="${roster.findIndex(x=>!x)}">+ Lån spiller</button>`:`<span class="full">✓ Klar</span>`}</div>
@@ -610,6 +632,7 @@ function renderScheduleTable(matches){
                   <th>Modstander</th>
                   <th>Spillested</th>
                   <th>Runde</th>
+                  <th>Resultat</th>
                 </tr>
               </thead>
               <tbody>
@@ -621,6 +644,14 @@ function renderScheduleTable(matches){
                     <td>${escapeHtml(m.opponent)}</td>
                     <td class="schedule-venue">${escapeHtml(m.venue)}</td>
                     <td><span class="round-pill">R${m.round}</span></td>
+                    <td class="result-cell">${scheduleMode==='played'
+                      ? `<div class="score-editor">
+                          <input type="number" min="0" max="99" inputmode="numeric" aria-label="Hjemmemål" placeholder="H" value="${getMatchResult(m)?.homeGoals ?? ''}" data-score-home="${escapeHtml(matchResultKey(m))}">
+                          <span>–</span>
+                          <input type="number" min="0" max="99" inputmode="numeric" aria-label="Udemål" placeholder="U" value="${getMatchResult(m)?.awayGoals ?? ''}" data-score-away="${escapeHtml(matchResultKey(m))}">
+                          <button type="button" class="score-save" data-score-save="${escapeHtml(matchResultKey(m))}">Gem</button>
+                        </div>`
+                      : resultIsEntered(getMatchResult(m)) ? `<strong class="saved-score">${escapeHtml(getMatchResult(m).homeGoals)} – ${escapeHtml(getMatchResult(m).awayGoals)}</strong>` : '<span class="no-score">—</span>'}</td>
                   </tr>`).join("")}
               </tbody>
             </table>
@@ -680,8 +711,47 @@ function renderSchedule(){
     scheduleMode=btn.dataset.scheduleMode;
     renderSchedule();
   });
+  document.querySelectorAll('[data-score-save]').forEach(btn=>btn.onclick=async()=>{
+    const key=btn.dataset.scoreSave;
+    const homeInput=document.querySelector(`[data-score-home="${CSS.escape(key)}"]`);
+    const awayInput=document.querySelector(`[data-score-away="${CSS.escape(key)}"]`);
+    const home=homeInput?.value.trim() ?? "", away=awayInput?.value.trim() ?? "";
+    if(home==="" || away===""){toast("Skriv begge måltal ind, før du gemmer");return;}
+    const h=Number(home), a=Number(away);
+    if(!Number.isInteger(h)||!Number.isInteger(a)||h<0||a<0||h>99||a>99){toast("Mål skal være hele tal fra 0 til 99");return;}
+    matchResults[key]={homeGoals:h,awayGoals:a};
+    await saveMatchResults();
+    renderSchedule();
+    toast("Resultatet er gemt");
+  });
 }
 
+async function saveMatchResults(){
+  if(usingLocalFallback){localStorage.setItem("u11-rosters",JSON.stringify(serializeState()));setStatus("Resultat gemt lokalt",true);return;}
+  setStatus("Gemmer resultat…");
+  try{
+    const payload=serializeState();
+    const {error}=await withTimeout(sb.from("u11_state").update({state:payload,updated_at:new Date().toISOString()}).eq("id","main"));
+    if(error) throw error;
+    setStatus("Resultat gemt · alle kan se det");
+  }catch(error){
+    console.error("Kunne ikke gemme kampresultat:",error);usingLocalFallback=true;
+    localStorage.setItem("u11-rosters",JSON.stringify(serializeState()));
+    setStatus("Resultat gemt lokalt – tjek Supabase",true);toast("Resultatet kunne ikke gemmes fælles i Supabase");
+  }
+}
+function buildMatchStats(){
+  const played=DATA.schedule.filter(m=>resultIsEntered(getMatchResult(m)));
+  let wins=0,draws=0,losses=0,goalsFor=0,goalsAgainst=0;
+  for(const m of played){const r=getMatchResult(m);const ours=isHjallerupHome(m)?Number(r.homeGoals):Number(r.awayGoals);const theirs=isHjallerupHome(m)?Number(r.awayGoals):Number(r.homeGoals);goalsFor+=ours;goalsAgainst+=theirs;if(ours>theirs)wins++;else if(ours===theirs)draws++;else losses++;}
+  const total=played.length;
+  return {total,wins,draws,losses,goalsFor,goalsAgainst,winPct:total?Math.round(wins/total*100):0,drawPct:total?Math.round(draws/total*100):0,lossPct:total?Math.round(losses/total*100):0};
+}
+function renderCampaignStats(){
+  const s=buildMatchStats();
+  const stats=[["Spillede kampe",s.total],["Sejre",s.wins],["Uafgjorte",s.draws],["Nederlag",s.losses],["Mål scoret",s.goalsFor],["Mål imod",s.goalsAgainst],["Sejrsprocent",`${s.winPct}%`],["Uafgjort procent",`${s.drawPct}%`],["Nederlagsprocent",`${s.lossPct}%`]];
+  return `<div class="match-stats-grid">${stats.map(([label,value])=>`<div class="match-stat"><span>${label}</span><strong>${value}</strong></div>`).join("")}</div><p class="stats-footnote">Statistikken tæller kampe, hvor begge måltal er udfyldt. Resultatet vurderes ud fra Hjallerups mål, uanset om Hjallerup står som hjemme- eller udehold.</p>`;
+}
 function buildStats(){
   const grouped=DATA.teams.map(team=>{
     const players=team.players.map(p=>{
@@ -759,9 +829,16 @@ function renderStats(){
   document.querySelectorAll('[data-stats-mode]').forEach(btn=>btn.onclick=()=>{statsMode=btn.dataset.statsMode;renderStats();});
 }
 
+function renderMatchStats(){
+  $("#roundView").classList.add("hidden");
+  $("#scheduleView").classList.add("hidden");
+  $("#statsView").classList.remove("hidden");
+  $("#statsView").innerHTML=`<div class="round-head"><div><h2>Kampstatistik</h2><p>Samlet statistik for alle Hjallerup U11-hold.</p></div></div>${renderCampaignStats()}<div class="notice">Indtast resultater under <strong>Kampprogram → Spillede kampe</strong>. Statistikken opdateres automatisk, når resultater gemmes.</div>`;
+}
 function renderAll(){
   renderTabs();
   if(currentRound==='stats') renderStats();
+  else if(currentRound==='matchstats') renderMatchStats();
   else if(currentRound==='schedule') renderSchedule();
   else renderRound();
 }
