@@ -310,3 +310,22 @@ td strong{font-weight:800}
 .match-stat strong{font-size:clamp(1.5rem,3vw,2.2rem);line-height:1.1;font-variant-numeric:tabular-nums}
 .stats-footnote{color:var(--muted);font-size:.9rem;margin:0 0 18px}
 @media(max-width:650px){.match-stats-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.match-stat{padding:13px}.score-editor input{width:36px;min-width:36px}}
+
+/* Kompakt kampprogram: hold alle kolonner inkl. resultat synlige på almindelig desktopbredde */
+.schedule-table{min-width:0;width:100%;}
+.schedule-table th,.schedule-table td{padding:5px 7px;font-size:.72rem;}
+.schedule-table th{font-size:.60rem;}
+.schedule-table th:nth-child(1),.schedule-table td:nth-child(1){width:7%;white-space:nowrap}
+.schedule-table th:nth-child(2),.schedule-table td:nth-child(2){width:13%;}
+.schedule-table th:nth-child(3),.schedule-table td:nth-child(3){width:5%;white-space:nowrap;text-align:center}
+.schedule-table th:nth-child(4),.schedule-table td:nth-child(4){width:21%;}
+.schedule-table th:nth-child(5),.schedule-table td:nth-child(5){width:25%;}
+.schedule-table th:nth-child(6),.schedule-table td:nth-child(6){width:6%;white-space:nowrap;text-align:center}
+.schedule-table th:nth-child(7),.schedule-table td:nth-child(7){width:23%;}
+.score-editor{gap:3px}
+.score-editor input{width:34px;min-width:34px;padding:5px 2px;font-size:.72rem}
+.score-save{padding:5px 7px;font-size:.7rem}
+.result-cell{min-width:0}
+.tab.stats{margin-left:0}
+.tab.stats:first-of-type{margin-left:auto}
+@media(max-width:900px){.schedule-table{min-width:760px}}
